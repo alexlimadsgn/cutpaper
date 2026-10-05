@@ -1,10 +1,21 @@
-import { Box, Heading, NativeSelect, SimpleGrid, Text } from '@chakra-ui/react';
+import { Box, Button, Heading, NativeSelect, SimpleGrid, Text } from '@chakra-ui/react';
+import { graphBounds, scaleGraph } from '../geometry/graph';
 import { TEMPLATES, type TemplateId } from '../geometry/templates';
+import { openSvgFile } from '../io/openSvg';
 import { useStore } from '../store';
 import { NumField, Panel, Section } from './ui';
 
 export function LeftPanel() {
-  const { template, params, setParam, bleed, setBleed } = useStore();
+  const s = useStore();
+  const { params, setParam } = s;
+  const b = graphBounds(s.doc.graph);
+
+  const resize = (axis: 'w' | 'h', val: number) => {
+    if (val <= 0 || !b.w || !b.h) return;
+    const k = axis === 'w' ? val / b.w : val / b.h; // proporcional
+    s.commit({ graph: scaleGraph(s.doc.graph, k, k, [b.minX, b.minY]) });
+  };
+
   return (
     <Panel w="320px" flexShrink={0}>
       <Box display="flex" alignItems="center" gap={2} mb={8}>
@@ -12,39 +23,50 @@ export function LeftPanel() {
         <Heading size="xl" fontWeight="800" letterSpacing="-0.02em">CutPaper</Heading>
       </Box>
 
-      <Section title="Modelo">
-        <NativeSelect.Root>
-          <NativeSelect.Field value={template} onChange={() => {}}>
+      <Section title="Molde">
+        <Button w="full" size="sm" bg="black" color="white" onClick={openSvgFile}>Importar SVG (die cut)</Button>
+        {s.importInfo && <Text fontSize="xs" color="gray.600" mt={2}>{s.importInfo}</Text>}
+        <Text fontSize="xs" color="gray.500" mt={2}>
+          Vinco é detectado por camada (vinco/crease/fold), linha tracejada ou cor azul/verde; o resto vira corte.
+        </Text>
+        <SimpleGrid columns={2} gap={3} mt={4}>
+          <NumField label="Largura total (mm)" step={0.5} value={+b.w.toFixed(2)} onChange={(v) => resize('w', v)} />
+          <NumField label="Altura total (mm)" step={0.5} value={+b.h.toFixed(2)} onChange={(v) => resize('h', v)} />
+        </SimpleGrid>
+        <Text fontSize="xs" color="gray.500" mt={2}>Redimensiona o molde inteiro proporcionalmente.</Text>
+      </Section>
+
+      <Section title="Modelo paramétrico">
+        <NativeSelect.Root size="sm">
+          <NativeSelect.Field value={s.template} onChange={() => {}}>
             {(Object.keys(TEMPLATES) as TemplateId[]).map((id) => (
               <option key={id} value={id}>{TEMPLATES[id].name}</option>
             ))}
           </NativeSelect.Field>
           <NativeSelect.Indicator />
         </NativeSelect.Root>
-      </Section>
-
-      <Section title="Dimensões internas (mm)">
-        <SimpleGrid columns={3} gap={3}>
+        <SimpleGrid columns={3} gap={3} mt={4}>
           <NumField label="Largura" value={params.width} onChange={(v) => setParam('width', v)} />
           <NumField label="Profund." value={params.depth} onChange={(v) => setParam('depth', v)} />
           <NumField label="Altura" value={params.height} onChange={(v) => setParam('height', v)} />
+          <NumField label="Aba tampa" value={params.tuck} onChange={(v) => setParam('tuck', v)} />
+          <NumField label="Abas cola" value={params.glue} onChange={(v) => setParam('glue', v)} />
+          <NumField label="Espessura" value={params.thickness} step={0.1} onChange={(v) => setParam('thickness', v)} />
         </SimpleGrid>
+        {s.source !== 'template' && (
+          <Text fontSize="xs" color="orange.600" mt={3}>
+            O molde atual foi {s.source === 'import' ? 'importado' : 'editado'}. Alterar um parâmetro gera o modelo de novo (Ctrl+Z desfaz).
+          </Text>
+        )}
       </Section>
 
-      <Section title="Abas (mm)">
+      <Section title="Sangria e grade">
         <SimpleGrid columns={2} gap={3}>
-          <NumField label="Aba da tampa" value={params.tuck} onChange={(v) => setParam('tuck', v)} />
-          <NumField label="Abas de cola" value={params.glue} onChange={(v) => setParam('glue', v)} />
-        </SimpleGrid>
-      </Section>
-
-      <Section title="Material e sangria">
-        <SimpleGrid columns={2} gap={3}>
-          <NumField label="Espessura (mm)" value={params.thickness} step={0.1} onChange={(v) => setParam('thickness', v)} />
-          <NumField label="Sangria (mm)" value={bleed} step={0.5} onChange={setBleed} />
+          <NumField label="Sangria (mm)" value={s.bleed} step={0.5} onChange={s.setBleed} />
+          <NumField label="Grade/snap (mm)" value={s.grid} step={0.5} onChange={s.setGrid} />
         </SimpleGrid>
         <Text fontSize="xs" color="gray.500" mt={3}>
-          A sangria é um offset do contorno de corte; os vincos não são deslocados.
+          A sangria é um offset da área de material (janelas incluídas). Grade 0 desliga o snap.
         </Text>
       </Section>
     </Panel>

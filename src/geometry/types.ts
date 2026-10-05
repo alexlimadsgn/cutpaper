@@ -1,10 +1,13 @@
 export type Vec2 = [number, number];
 
-/** Painel do molde. Coordenadas em mm, eixo Y para baixo (igual ao SVG). */
+/** Painel do molde, derivado do grafo. Coordenadas em mm, eixo Y para baixo (igual ao SVG). */
 export interface Face {
+  /** Id estável: menor half-edge do contorno (sobrevive a movimentação de vértices). */
   id: string;
   name: string;
   poly: Vec2[];
+  holes: Vec2[][];
+  area: number;
   /** Face à qual esta está ligada por um vinco (raiz = undefined). */
   parent?: string;
   /** Linha de dobra (vinco) compartilhada com a face-pai. */
@@ -13,14 +16,12 @@ export interface Face {
   angle?: number;
 }
 
-export interface Crease {
-  a: Vec2;
-  b: Vec2;
-}
-
 export interface Dieline {
   faces: Face[];
-  creases: Crease[];
+  /** Linhas de corte encadeadas em polilinhas. */
+  cuts: Vec2[][];
+  /** Linhas de vinco encadeadas em polilinhas. */
+  creases: Vec2[][];
 }
 
 export interface BoxParams {

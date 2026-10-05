@@ -1,17 +1,17 @@
 import { useMemo } from 'react';
-import { TEMPLATES } from './geometry/templates';
-import { bleedOutline, cutOutline } from './geometry/outline';
+import { deriveDieline } from './geometry/faces';
+import { bleedOutline, materialOutline } from './geometry/outline';
 import { viewBoxOf } from './export/svg';
 import { useStore } from './store';
 
+/** Molde derivado do documento atual (faces, dobras, sangria, viewBox). */
 export function useDieline() {
-  const template = useStore((s) => s.template);
-  const params = useStore((s) => s.params);
+  const doc = useStore((s) => s.doc);
   const bleed = useStore((s) => s.bleed);
   return useMemo(() => {
-    const dieline = TEMPLATES[template].build(params);
-    const cut = cutOutline(dieline);
-    const bl = bleedOutline(cut, bleed);
-    return { dieline, cut, bleedPolys: bl, viewBox: viewBoxOf(bl) };
-  }, [template, params, bleed]);
+    const dieline = deriveDieline(doc.graph, doc.names, doc.root);
+    const material = materialOutline(dieline);
+    const bleedPolys = bleedOutline(material, bleed);
+    return { dieline, material, bleedPolys, viewBox: viewBoxOf(bleedPolys.length ? bleedPolys : material) };
+  }, [doc, bleed]);
 }

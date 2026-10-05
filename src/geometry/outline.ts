@@ -9,9 +9,13 @@ const toPaths = (polys: Vec2[][]): Paths64 =>
 const fromPaths = (paths: Paths64): Vec2[][] =>
   paths.map((path) => path.map((pt) => [pt.x / SCALE, pt.y / SCALE] as Vec2));
 
-/** Contorno externo (linha de corte) = união de todas as faces. */
-export function cutOutline(d: Dieline): Vec2[][] {
-  return fromPaths(Clipper.Union(toPaths(d.faces.map((f) => f.poly)), undefined, FillRule.NonZero)).map(clean);
+/** Área de material = união das faces menos as janelas (furos). */
+export function materialOutline(d: Dieline): Vec2[][] {
+  if (!d.faces.length) return [];
+  const union = Clipper.Union(toPaths(d.faces.map((f) => f.poly)), undefined, FillRule.NonZero);
+  const holes = d.faces.flatMap((f) => f.holes);
+  const result = holes.length ? Clipper.Difference(union, toPaths(holes), FillRule.NonZero) : union;
+  return fromPaths(result).map(clean).filter((p) => p.length >= 3);
 }
 
 /** Remove pontos duplicados e colineares. */
@@ -72,6 +76,7 @@ function normal(a: Vec2, b: Vec2, sign: number): Vec2 {
 }
 
 export function bounds(polys: Vec2[][]) {
+  if (!polys.some((p) => p.length)) return { minX: 0, minY: 0, maxX: 100, maxY: 100, w: 100, h: 100 };
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const poly of polys)
     for (const [x, y] of poly) {

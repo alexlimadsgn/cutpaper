@@ -1,24 +1,30 @@
-import { Box, Button, Flex, Group, Heading, IconButton, Text } from '@chakra-ui/react';
+import { Box, Button, Flex, Group, IconButton, Text } from '@chakra-ui/react';
 import { useState } from 'react';
-import { Canvas2D } from './components/Canvas2D';
+import { Editor2D } from './components/Editor2D';
 import { LeftPanel } from './components/LeftPanel';
 import { Preview3D } from './components/Preview3D';
 import { RightPanel } from './components/RightPanel';
 import { buildSvg, download } from './export/svg';
-import { useStore } from './store';
+import { useStore, type Tool } from './store';
 import { useDieline } from './useDieline';
 
 type View = '2d' | '3d' | 'split';
 
+const TOOLS: { id: Tool; label: string; key: string }[] = [
+  { id: 'select', label: 'Selecionar', key: 'V' },
+  { id: 'cut', label: 'Corte', key: 'C' },
+  { id: 'crease', label: 'Vinco', key: 'D' },
+];
+
 export default function App() {
   const [view, setView] = useState<View>('split');
-  const [zoom, setZoom] = useState(0.9);
   const { dieline } = useDieline();
   const s = useStore();
+  const roots = dieline.faces.filter((f) => !f.parent).length;
 
   const exportSvg = () =>
     download(
-      `cutpaper-${s.params.width}x${s.params.depth}x${s.params.height}.svg`,
+      `cutpaper-${Date.now().toString(36)}.svg`,
       buildSvg({ dieline, bleed: s.bleed, layers: s.layers, fullImage: s.fullImage, faceImages: s.faceImages }),
     );
 
@@ -27,8 +33,27 @@ export default function App() {
       <LeftPanel />
 
       <Flex direction="column" flex={1} minW={0} bg="white" borderRadius="xl" borderWidth="1px" borderColor="gray.200" overflow="hidden">
-        <Flex align="center" justify="space-between" px={6} py={4} borderBottomWidth="1px" borderColor="gray.100" gap={4}>
-          <Heading size="md" fontWeight="700">Planificação</Heading>
+        <Flex align="center" justify="space-between" px={4} py={3} borderBottomWidth="1px" borderColor="gray.100" gap={3} wrap="wrap">
+          <Flex gap={2}>
+            <Group attached>
+              {TOOLS.map((t) => (
+                <Button
+                  key={t.id}
+                  size="sm"
+                  variant={s.tool === t.id ? 'solid' : 'outline'}
+                  colorPalette={t.id === 'cut' ? 'red' : t.id === 'crease' ? 'blue' : 'gray'}
+                  onClick={() => s.setTool(t.id)}
+                  title={`${t.label} (${t.key})`}
+                >
+                  {t.label}
+                </Button>
+              ))}
+            </Group>
+            <Group attached>
+              <IconButton size="sm" variant="outline" aria-label="Desfazer" title="Desfazer (Ctrl+Z)" disabled={!s.past.length} onClick={s.undo}>↶</IconButton>
+              <IconButton size="sm" variant="outline" aria-label="Refazer" title="Refazer (Ctrl+Shift+Z)" disabled={!s.future.length} onClick={s.redo}>↷</IconButton>
+            </Group>
+          </Flex>
           <Group attached>
             {(['2d', 'split', '3d'] as View[]).map((v) => (
               <Button key={v} size="sm" variant={view === v ? 'solid' : 'outline'} onClick={() => setView(v)}>
@@ -44,15 +69,8 @@ export default function App() {
 
         <Flex flex={1} minH={0}>
           {view !== '3d' && (
-            <Box flex={1} position="relative" bg="gray.50" overflow="auto">
-              <Flex position="absolute" inset={0} align="center" justify="center" p={6}>
-                <Canvas2D zoom={zoom} />
-              </Flex>
-              <Group attached position="absolute" bottom={4} right={4} bg="white" borderRadius="md" shadow="sm">
-                <IconButton size="sm" variant="outline" aria-label="Diminuir zoom" onClick={() => setZoom((z) => Math.max(0.2, z - 0.1))}>−</IconButton>
-                <Button size="sm" variant="outline" onClick={() => setZoom(0.9)}>{Math.round(zoom * 100)}%</Button>
-                <IconButton size="sm" variant="outline" aria-label="Aumentar zoom" onClick={() => setZoom((z) => Math.min(4, z + 0.1))}>+</IconButton>
-              </Group>
+            <Box flex={1} minW={0} position="relative">
+              <Editor2D />
             </Box>
           )}
           {view !== '2d' && (
@@ -62,8 +80,10 @@ export default function App() {
           )}
         </Flex>
 
-        <Text textAlign="center" fontSize="xs" color="gray.500" py={3} borderTopWidth="1px" borderColor="gray.100">
-          {dieline.faces.length} faces • {dieline.creases.length} vincos • Caixa {s.params.width}×{s.params.depth}×{s.params.height} mm • Sangria {s.bleed} mm
+        <Text textAlign="center" fontSize="xs" color="gray.500" py={2} borderTopWidth="1px" borderColor="gray.100">
+          {dieline.faces.length} faces • {Object.keys(s.doc.graph.e).length} linhas
+          {roots > 1 && <Text as="span" color="orange.600"> • {roots} partes sem vinco entre si</Text>}
+          {' '}• Roda = zoom • Espaço/botão do meio = mover • Del = excluir
         </Text>
       </Flex>
 

@@ -3,6 +3,7 @@ import { Canvas } from '@react-three/fiber';
 import { useEffect, useMemo, useState } from 'react';
 import * as THREE from 'three';
 import { buildSvg } from '../export/svg';
+import { centroid } from '../geometry/faces';
 import type { Face } from '../geometry/types';
 import { useStore } from '../store';
 import { useDieline } from '../useDieline';
@@ -12,10 +13,11 @@ const MM = 0.01; // 100 mm = 1 unidade
 /** Rasteriza a arte (mesmo SVG do export) numa textura para o 3D. */
 function useArtTexture() {
   const { dieline, viewBox } = useDieline();
-  const { bleed, fullImage, faceImages } = useStore();
+  const { bleed, fullImage, faceImages, dragging } = useStore();
   const [texture, setTexture] = useState<THREE.Texture>();
 
   useEffect(() => {
+    if (dragging) return; // a textura é refeita ao soltar
     const svg = buildSvg({
       dieline, bleed, fullImage, faceImages, background: '#ffffff',
       layers: { artwork: true, bleed: false, cut: false, crease: false },
@@ -38,7 +40,7 @@ function useArtTexture() {
     };
     img.src = url;
     return () => { cancelled = true; };
-  }, [dieline, bleed, fullImage, faceImages, viewBox]);
+  }, [dieline, bleed, fullImage, faceImages, viewBox, dragging]);
 
   return texture;
 }
@@ -81,7 +83,9 @@ function Box3D() {
   const geometries = useMemo(
     () =>
       dieline.faces.map((f) => {
-        const geo = new THREE.ShapeGeometry(new THREE.Shape(f.poly.map(([x, y]) => new THREE.Vector2(x, y))));
+        const shape = new THREE.Shape(f.poly.map(([x, y]) => new THREE.Vector2(x, y)));
+        shape.holes = f.holes.map((h) => new THREE.Path(h.map(([x, y]) => new THREE.Vector2(x, y))));
+        const geo = new THREE.ShapeGeometry(shape);
         const pos = geo.attributes.position;
         const uv = new Float32Array(pos.count * 2);
         for (let i = 0; i < pos.count; i++) {
@@ -96,13 +100,16 @@ function Box3D() {
   useEffect(() => () => geometries.forEach((g) => g.geo.dispose()), [geometries]);
 
   const matrices = useMemo(() => foldMatrices(dieline.faces, fold), [dieline, fold]);
-  const root = dieline.faces[0].poly;
-  const cx = (root[0][0] + root[2][0]) / 2;
-  const cy = (root[0][1] + root[2][1]) / 2;
+  // centraliza na face base (a maior sem pai)
+  const root = dieline.faces.filter((f) => !f.parent).sort((a, b) => b.area - a.area)[0];
+  const [cx, cy] = root ? centroid(root.poly) : [0, 0];
+  // moldes muito grandes/pequenos (ex.: SVG importado) são enquadrados automaticamente
+  const span = Math.max(viewBox[2], viewBox[3]);
+  const unit = span > 400 || span < 50 ? 2.7 / span : MM;
 
   return (
     // gira o plano XY para o chão (+Z da dobra vira +Y = para cima)
-    <group scale={MM} rotation={[-Math.PI / 2, 0, 0]}>
+    <group scale={unit} rotation={[-Math.PI / 2, 0, 0]}>
       <group position={[-cx, -cy, 0]}>
         {geometries.map(({ id, geo }) => (
           <group key={id} matrix={matrices.get(id)} matrixAutoUpdate={false}>

@@ -2,15 +2,18 @@ import { Box, Button, Flex, Image, Slider, Stack, Text } from '@chakra-ui/react'
 import { COLORS } from '../export/svg';
 import { useStore } from '../store';
 import { useDieline } from '../useDieline';
+import { Inspector } from './Inspector';
 import { Check, Panel, Section, pickImage } from './ui';
 
 export function RightPanel() {
   const { dieline } = useDieline();
   const s = useStore();
-  const selected = dieline.faces.find((f) => f.id === s.selectedFace);
+  const selected = dieline.faces.find((f) => f.id === s.sel.face);
 
   return (
     <Panel w="320px" flexShrink={0}>
+      <Inspector />
+
       <Section title="Camadas">
         <Flex wrap="wrap" gap={4}>
           <Check label="Corte" color={COLORS.cut} checked={s.layers.cut} onChange={() => s.toggleLayer('cut')} />
@@ -53,21 +56,21 @@ export function RightPanel() {
             />
           </>
         ) : (
-          <Text fontSize="sm" color="gray.500">Clique numa face na planificação para aplicar uma imagem.</Text>
+          <Text fontSize="sm" color="gray.500">Clique numa face na planificação (ou na lista) para aplicar uma imagem.</Text>
         )}
         <Stack gap={1} mt={4}>
           {dieline.faces.map((f) => (
             <Flex
               key={f.id}
               as="button"
-              onClick={() => s.selectFace(f.id)}
+              onClick={() => s.select({ face: f.id })}
               align="center"
               justify="space-between"
               px={2}
               py={1}
               borderRadius="md"
               fontSize="xs"
-              bg={s.selectedFace === f.id ? 'red.50' : undefined}
+              bg={s.sel.face === f.id ? 'red.50' : undefined}
               _hover={{ bg: 'gray.50' }}
             >
               <span>{f.name}</span>
