@@ -1,4 +1,4 @@
-import { OrbitControls } from '@react-three/drei';
+import { Line, OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 import { useEffect, useMemo, useState } from 'react';
 import * as THREE from 'three';
@@ -49,6 +49,27 @@ function Box3D() {
   const { dieline, viewBox, conflicts } = useDieline();
   const fold = useStore((s) => s.fold);
   const bad = new Set(conflicts.map((c) => c.face));
+  const sel = useStore((s) => s.sel);
+  const select = useStore((s) => s.select);
+  const graph = useStore((s) => s.doc.graph);
+
+  // linhas selecionadas no 2D: cada uma é desenhada junto da face que a contém
+  const selLines = useMemo(() => {
+    const out = new Map<string, [number, number, number][][]>();
+    for (const eid of sel.edges) {
+      const e = graph.e[eid];
+      if (!e) continue;
+      const a = graph.v[e.a], b = graph.v[e.b];
+      const has = (f: (typeof dieline.faces)[number], p: { x: number; y: number }) =>
+        [f.poly, ...f.holes].some((ring) => ring.some(([x, y]) => Math.abs(x - p.x) < 1e-6 && Math.abs(y - p.y) < 1e-6));
+      // prefere a face-filho (a que dobra nessa linha), senão qualquer uma que contenha a linha
+      const owners = dieline.faces.filter((f) => has(f, a) && has(f, b));
+      const f = owners.find((o) => o.parent) ?? owners[0];
+      if (!f) continue;
+      out.set(f.id, [...(out.get(f.id) ?? []), [[a.x, a.y, 0], [b.x, b.y, 0]]]);
+    }
+    return out;
+  }, [sel.edges, graph, dieline]);
   const texture = useArtTexture();
 
   const geometries = useMemo(
@@ -82,20 +103,34 @@ function Box3D() {
     // gira o plano XY para o chão (+Z da dobra vira +Y = para cima)
     <group scale={unit} rotation={[-Math.PI / 2, 0, 0]}>
       <group position={[-cx, -cy, 0]}>
-        {geometries.map(({ id, geo }) => (
+        {geometries.map(({ id, geo }) => {
+          const selected = sel.face === id;
+          const lines = selLines.get(id);
+          return (
           <group key={id} matrix={matrices.get(id)} matrixAutoUpdate={false}>
-            <mesh geometry={geo}>
-              <meshStandardMaterial key={texture?.uuid} map={texture ?? null} color={bad.has(id) ? '#fca5a5' : '#ffffff'} side={THREE.BackSide} roughness={0.8} />
+            <mesh
+              geometry={geo}
+              onClick={(e) => {
+                if (e.delta > 4) return; // foi arrasto da órbita
+                e.stopPropagation();
+                select({ face: id });
+              }}
+            >
+              <meshStandardMaterial key={texture?.uuid} map={texture ?? null} color={bad.has(id) ? '#fca5a5' : '#ffffff'} emissive={selected ? '#f59e0b' : '#000000'} emissiveIntensity={selected ? 0.55 : 0} side={THREE.BackSide} roughness={0.8} />
             </mesh>
-            <mesh geometry={geo}>
-              <meshStandardMaterial color={bad.has(id) ? '#ef4444' : '#f1efe9'} side={THREE.FrontSide} roughness={0.9} />
+            <mesh geometry={geo} onClick={(e) => { if (e.delta > 4) return; e.stopPropagation(); select({ face: id }); }}>
+              <meshStandardMaterial color={bad.has(id) ? '#ef4444' : '#f1efe9'} emissive={selected ? '#f59e0b' : '#000000'} emissiveIntensity={selected ? 0.55 : 0} side={THREE.FrontSide} roughness={0.9} />
             </mesh>
             <lineSegments>
               <edgesGeometry args={[geo]} />
-              <lineBasicMaterial color="#b9b4aa" />
+              <lineBasicMaterial color={selected ? '#F59E0B' : '#b9b4aa'} />
             </lineSegments>
+            {lines?.map((pts, i) => (
+              <Line key={i} points={pts} color="#F59E0B" lineWidth={4} depthTest={false} renderOrder={10} />
+            ))}
           </group>
-        ))}
+          );
+        })}
       </group>
     </group>
   );
