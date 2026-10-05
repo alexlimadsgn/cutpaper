@@ -21,7 +21,8 @@ interface Snap { p: Vec2; kind: 'vertex' | 'edge' | 'grid' | 'free'; vid?: strin
 const SNAP_PX = 8;
 
 export function Editor2D() {
-  const { dieline, material, bleedPolys, viewBox: fitBox } = useDieline();
+  const { dieline, material, bleedPolys, conflicts, viewBox: fitBox } = useDieline();
+  const bad = new Set(conflicts.map((c) => c.face));
   const s = useStore();
   const { graph } = s.doc;
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -356,6 +357,12 @@ export function Editor2D() {
         onContextMenu={(e) => { e.preventDefault(); setDraw({ start: null, hover: null }); }}
       >
         <defs dangerouslySetInnerHTML={{ __html: art.defs }} />
+        <defs>
+          <pattern id="ed-bad" width={8 * px} height={8 * px} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <rect width={8 * px} height={8 * px} fill="rgba(239,68,68,0.12)" />
+            <line x1={0} y1={0} x2={0} y2={8 * px} stroke="#EF4444" strokeWidth={2.5 * px} />
+          </pattern>
+        </defs>
         {gridStep && (
           <>
             <defs>
@@ -380,7 +387,10 @@ export function Editor2D() {
             data-id={f.id}
             d={polyToPath([f.poly, ...f.holes])}
             fillRule="evenodd"
-            fill={s.sel.face === f.id ? 'rgba(229,38,46,0.12)' : 'transparent'}
+            fill={bad.has(f.id) ? 'url(#ed-bad)' : s.sel.face === f.id ? 'rgba(229,38,46,0.12)' : 'transparent'}
+            stroke={s.sel.face === f.id ? '#E5262E' : 'none'}
+            strokeWidth={2}
+            vectorEffect="non-scaling-stroke"
           >
             <title>{f.name}</title>
           </path>

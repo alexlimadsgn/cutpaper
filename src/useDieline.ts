@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { deriveDieline } from './geometry/faces';
+import { findConflicts } from './geometry/fold';
 import { bleedOutline, materialOutline } from './geometry/outline';
 import { viewBoxOf } from './export/svg';
 import { useStore } from './store';
@@ -12,6 +13,7 @@ export function useDieline() {
     const dieline = deriveDieline(doc.graph, doc.names, doc.root);
     const material = materialOutline(dieline);
     const bleedPolys = bleedOutline(material, bleed);
-    return { dieline, material, bleedPolys, viewBox: viewBoxOf(bleedPolys.length ? bleedPolys : material) };
+    const conflicts = findConflicts(dieline.faces);
+    return { dieline, material, bleedPolys, conflicts, viewBox: viewBoxOf(bleedPolys.length ? bleedPolys : material) };
   }, [doc, bleed]);
 }

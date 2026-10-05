@@ -9,6 +9,11 @@ export function LeftPanel() {
   const s = useStore();
   const { params, setParam } = s;
   const b = graphBounds(s.doc.graph);
+  const lim = TEMPLATES[s.template].limits(params);
+  const clamped = [
+    params.glue > lim.glue && `abas de cola limitadas a ${lim.glue} mm (metade da largura, menos folga)`,
+    params.tuck > lim.tuck && `aba da tampa limitada a ${lim.tuck} mm (altura da frente)`,
+  ].filter(Boolean);
 
   const resize = (axis: 'w' | 'h', val: number) => {
     if (val <= 0 || !b.w || !b.h) return;
@@ -53,6 +58,11 @@ export function LeftPanel() {
           <NumField label="Abas cola" value={params.glue} onChange={(v) => setParam('glue', v)} />
           <NumField label="Espessura" value={params.thickness} step={0.1} onChange={(v) => setParam('thickness', v)} />
         </SimpleGrid>
+        {clamped.length > 0 && (
+          <Text fontSize="xs" color="blue.700" bg="blue.50" p={2} borderRadius="md" mt={3}>
+            Ajustado para ser possível montar: {clamped.join('; ')}.
+          </Text>
+        )}
         {s.source !== 'template' && (
           <Text fontSize="xs" color="orange.600" mt={3}>
             O molde atual foi {s.source === 'import' ? 'importado' : 'editado'}. Alterar um parâmetro gera o modelo de novo (Ctrl+Z desfaz).

@@ -3,10 +3,10 @@ import type { Dieline, Vec2 } from './types';
 
 const SCALE = 1000; // mm → µm (Clipper trabalha com inteiros)
 
-const toPaths = (polys: Vec2[][]): Paths64 =>
+export const toPaths = (polys: Vec2[][]): Paths64 =>
   polys.map((poly) => Clipper.makePath(poly.flatMap(([x, y]) => [Math.round(x * SCALE), Math.round(y * SCALE)])));
 
-const fromPaths = (paths: Paths64): Vec2[][] =>
+export const fromPaths = (paths: Paths64): Vec2[][] =>
   paths.map((path) => path.map((pt) => [pt.x / SCALE, pt.y / SCALE] as Vec2));
 
 /** Área de material = união das faces menos as janelas (furos). */

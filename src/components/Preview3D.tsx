@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import * as THREE from 'three';
 import { buildSvg } from '../export/svg';
 import { centroid } from '../geometry/faces';
-import type { Face } from '../geometry/types';
+import { foldMatrices } from '../geometry/fold';
 import { useStore } from '../store';
 import { useDieline } from '../useDieline';
 
@@ -45,39 +45,10 @@ function useArtTexture() {
   return texture;
 }
 
-/** Matriz de cada face: compõe as rotações ao longo da árvore de dobras. */
-function foldMatrices(faces: Face[], t: number) {
-  const byId = new Map(faces.map((f) => [f.id, f]));
-  const cache = new Map<string, THREE.Matrix4>();
-  const get = (f: Face): THREE.Matrix4 => {
-    const hit = cache.get(f.id);
-    if (hit) return hit;
-    let m = new THREE.Matrix4();
-    if (f.parent && f.hinge) {
-      const [a, b] = f.hinge;
-      const axis = new THREE.Vector3(b[0] - a[0], b[1] - a[1], 0).normalize();
-      // centroide da face relativo à dobradiça
-      const cx = f.poly.reduce((s, p) => s + p[0], 0) / f.poly.length - a[0];
-      const cy = f.poly.reduce((s, p) => s + p[1], 0) / f.poly.length - a[1];
-      // Com Y para baixo, quem olha o SVG vê o lado −Z (lado impresso).
-      // A dobra vai para +Z, deixando a impressão do lado de fora.
-      if (axis.x * cy - axis.y * cx < 0) axis.negate();
-      const angle = THREE.MathUtils.degToRad((f.angle ?? 90) * t);
-      const local = new THREE.Matrix4()
-        .makeTranslation(a[0], a[1], 0)
-        .multiply(new THREE.Matrix4().makeRotationAxis(axis, angle))
-        .multiply(new THREE.Matrix4().makeTranslation(-a[0], -a[1], 0));
-      m = get(byId.get(f.parent)!).clone().multiply(local);
-    }
-    cache.set(f.id, m);
-    return m;
-  };
-  return new Map(faces.map((f) => [f.id, get(f)]));
-}
-
 function Box3D() {
-  const { dieline, viewBox } = useDieline();
+  const { dieline, viewBox, conflicts } = useDieline();
   const fold = useStore((s) => s.fold);
+  const bad = new Set(conflicts.map((c) => c.face));
   const texture = useArtTexture();
 
   const geometries = useMemo(
@@ -114,10 +85,10 @@ function Box3D() {
         {geometries.map(({ id, geo }) => (
           <group key={id} matrix={matrices.get(id)} matrixAutoUpdate={false}>
             <mesh geometry={geo}>
-              <meshStandardMaterial key={texture?.uuid} map={texture ?? null} side={THREE.BackSide} roughness={0.8} />
+              <meshStandardMaterial key={texture?.uuid} map={texture ?? null} color={bad.has(id) ? '#fca5a5' : '#ffffff'} side={THREE.BackSide} roughness={0.8} />
             </mesh>
             <mesh geometry={geo}>
-              <meshStandardMaterial color="#f1efe9" side={THREE.FrontSide} roughness={0.9} />
+              <meshStandardMaterial color={bad.has(id) ? '#ef4444' : '#f1efe9'} side={THREE.FrontSide} roughness={0.9} />
             </mesh>
             <lineSegments>
               <edgesGeometry args={[geo]} />

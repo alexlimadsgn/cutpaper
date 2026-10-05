@@ -7,7 +7,7 @@ import { NumField, Section } from './ui';
 /** Propriedades do que está selecionado no editor (arestas, vértices ou face). */
 export function Inspector() {
   const s = useStore();
-  const { dieline } = useDieline();
+  const { dieline, conflicts } = useDieline();
   const g = s.doc.graph;
   const { edges, vertices, face } = s.sel;
 
@@ -90,6 +90,16 @@ export function Inspector() {
             <span>Área: {(f.area / 100).toFixed(1)} cm²</span>
             <span>{isRoot ? 'Base da dobra' : `Dobra: ${f.angle}°`}</span>
           </Flex>
+          {conflicts.filter((c) => c.face === f.id).map((c) => {
+            const other = dieline.faces.find((x) => x.id === c.other)?.name ?? 'outra face';
+            return (
+              <Text key={c.other} fontSize="xs" color="red.600" bg="red.50" p={2} borderRadius="md">
+                {c.kind === 'overlap'
+                  ? `Sobrepõe "${other}" na caixa montada (${c.area.toFixed(0)} mm²). Reduza uma das abas.`
+                  : `Passa ${c.area.toFixed(0)} mm² da borda de "${other}", onde deveria ser colada.`}
+              </Text>
+            );
+          })}
           {!isRoot && (
             <Button size="sm" variant="outline" onClick={() => s.commit({ root: f.id })}>Definir como base</Button>
           )}

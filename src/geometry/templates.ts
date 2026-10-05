@@ -20,12 +20,29 @@ const rect = (x: number, y: number, w: number, h: number): Vec2[] => [
 ];
 
 /**
+ * Limites físicos das abas da caixa com tampa:
+ * - as abas de cola das duas laterais se encontram na frente/traseira → cada uma ≤ metade da largura
+ * - a aba da tampa entra na frente → ≤ altura da frente
+ */
+export function lidBoxLimits(p: BoxParams) {
+  const clearance = 1; // folga entre as abas
+  return {
+    glue: Math.max(0, +(p.width / 2 - clearance).toFixed(2)),
+    tuck: Math.max(0, +(p.height - p.thickness - clearance).toFixed(2)),
+  };
+}
+
+/**
  * Caixa com tampa articulada (estilo "rectangular box" com abas de cola).
  * Fundo no centro; traseira → tampa → aba de encaixe para cima;
  * frente para baixo; laterais para os lados com abas de cola.
  */
 export function lidBox(p: BoxParams): TFace[] {
-  const { width: W, depth: D, height: H, tuck: T, glue: G, thickness: t } = p;
+  const { width: W, depth: D, height: H, thickness: t } = p;
+  // abas limitadas ao que realmente dá para colar/encaixar
+  const lim = lidBoxLimits(p);
+  const G = Math.min(p.glue, lim.glue);
+  const T = Math.min(p.tuck, lim.tuck);
   const inset = Math.min(G * 0.35, D / 4);
   const tuckInset = Math.min(T * 0.5, W / 6);
 
@@ -113,6 +130,6 @@ export function buildTemplate(faces: TFace[]): { graph: Graph; names: Record<str
 }
 
 export const TEMPLATES = {
-  lidBox: { name: 'Caixa com tampa', build: (p: BoxParams) => buildTemplate(lidBox(p)) },
+  lidBox: { name: 'Caixa com tampa', build: (p: BoxParams) => buildTemplate(lidBox(p)), limits: lidBoxLimits },
 } as const;
 export type TemplateId = keyof typeof TEMPLATES;

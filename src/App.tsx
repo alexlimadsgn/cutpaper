@@ -18,7 +18,8 @@ const TOOLS: { id: Tool; label: string; key: string }[] = [
 
 export default function App() {
   const [view, setView] = useState<View>('split');
-  const { dieline } = useDieline();
+  const { dieline, conflicts } = useDieline();
+  const badFaces = new Set(conflicts.map((c) => c.face)).size;
   const s = useStore();
   const roots = dieline.faces.filter((f) => !f.parent).length;
 
@@ -83,6 +84,9 @@ export default function App() {
         <Text textAlign="center" fontSize="xs" color="gray.500" py={2} borderTopWidth="1px" borderColor="gray.100">
           {dieline.faces.length} faces • {Object.keys(s.doc.graph.e).length} linhas
           {roots > 1 && <Text as="span" color="orange.600"> • {roots} partes sem vinco entre si</Text>}
+          {badFaces > 0 && (
+            <Text as="span" color="red.600" fontWeight="600"> • {badFaces} aba(s) impossível(is) de colar — veja as faces hachuradas</Text>
+          )}
           {' '}• Roda = zoom • Espaço/botão do meio = mover • Del = excluir
         </Text>
       </Flex>
