@@ -15,6 +15,7 @@ function useArtTexture() {
   const { dieline, viewBox } = useDieline();
   const { bleed, fullImage, faceImages, faceColors, bgColor, dragging } = useStore();
   const objects = useStore((s) => s.doc.objects);
+  const fontsVersion = useStore((s) => s.fontsVersion);
   const [texture, setTexture] = useState<THREE.Texture>();
 
   useEffect(() => {
@@ -41,7 +42,7 @@ function useArtTexture() {
     };
     img.src = url;
     return () => { cancelled = true; };
-  }, [dieline, bleed, fullImage, faceImages, faceColors, bgColor, objects, viewBox, dragging]);
+  }, [dieline, bleed, fullImage, faceImages, faceColors, bgColor, objects, viewBox, dragging, fontsVersion]);
 
   return texture;
 }

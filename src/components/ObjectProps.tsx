@@ -2,7 +2,8 @@ import { Button, Flex, Group, IconButton, Input, NativeSelect, SimpleGrid, Slide
 import {
   AlignCenter, AlignLeft, AlignRight, ArrowDownToLine, ArrowUpToLine, Bold, ChevronDown, ChevronUp, Copy, Italic, Trash2,
 } from 'lucide-react';
-import { FONTS, type ArtObject } from '../art/objects';
+import { FONTS } from '../art/fonts';
+import type { ArtObject } from '../art/objects';
 import { useStore } from '../store';
 import { useDieline } from '../useDieline';
 import { ColorField } from './ColorField';
@@ -47,7 +48,7 @@ export function ObjectProps({ o }: { o: ArtObject }) {
             />
             <NativeSelect.Root size="sm">
               <NativeSelect.Field value={o.font} onChange={(e) => up({ font: e.target.value })} fontFamily={o.font}>
-                {FONTS.map((f) => <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>)}
+                {FONTS.map((f) => <option key={f.name} value={f.name} style={{ fontFamily: f.name }}>{f.name}</option>)}
               </NativeSelect.Field>
               <NativeSelect.Indicator />
             </NativeSelect.Root>

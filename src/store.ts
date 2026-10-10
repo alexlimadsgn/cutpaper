@@ -67,6 +67,8 @@ interface State {
   /** Verificação: distância mínima do texto até corte/vinco (mm) e dpi mínimo. */
   safeMargin: number;
   minDpi: number;
+  /** Incrementado quando uma fonte termina de carregar (redesenha textos). */
+  fontsVersion: number;
 
   /** Aplica uma alteração ao documento e grava no histórico. */
   commit: (doc: Partial<Doc>, source?: State['source']) => void;
@@ -138,6 +140,7 @@ export const useStore = create<State>((set, get) => ({
   grid: 1,
   fitToken: 0,
   safeMargin: 3,
+  fontsVersion: 0,
   minDpi: 300,
 
   commit: (patch, source = 'edited') =>

@@ -1,4 +1,5 @@
 import type { Vec2 } from '../geometry/types';
+import { getFont } from './fonts';
 
 export type ArtType = 'rect' | 'ellipse' | 'text' | 'image';
 
@@ -34,8 +35,6 @@ export interface ArtObject {
   hidden?: boolean;
 }
 
-export const FONTS = ['Poppins', 'Georgia', 'Arial', 'Verdana', 'Trebuchet MS', 'Times New Roman', 'Courier New', 'Impact', 'Comic Sans MS'];
-
 export const PT_MM = 25.4 / 72;
 export const LINE_HEIGHT = 1.2;
 
@@ -67,9 +66,14 @@ let measureCtx: CanvasRenderingContext2D | null = null;
 export function fitText(o: ArtObject): ArtObject {
   const size = (o.fontSize ?? 12) * PT_MM;
   const lines = (o.text ?? '').split('\n');
-  measureCtx ??= document.createElement('canvas').getContext('2d');
+  const lf = getFont(o.font, o.bold, o.italic);
+  if (!lf) measureCtx ??= document.createElement('canvas').getContext('2d');
   let w = 0;
-  if (measureCtx) {
+  if (lf) {
+    // medida exata pela própria fonte
+    for (const l of lines) w = Math.max(w, lf.font.getAdvanceWidth(l || ' ', size));
+    if (lf.fakeItalic) w += size * 0.15;
+  } else if (measureCtx) {
     // mede em 100 px e escala para mm
     measureCtx.font = `${o.italic ? 'italic ' : ''}${o.bold ? '700' : '400'} 100px "${o.font ?? 'Poppins'}"`;
     for (const l of lines) w = Math.max(w, measureCtx.measureText(l || ' ').width / 100 * size);
@@ -118,6 +122,23 @@ export function objectToSvg(o: ArtObject): string {
         : '';
     case 'text': {
       const t = textLayout(o);
+      const lf = getFont(o.font, o.bold, o.italic);
+      if (lf) {
+        // texto em contornos: sai idêntico em qualquer lugar, sem depender da fonte instalada
+        const { font, fakeItalic, fakeBold } = lf;
+        const em = font.unitsPerEm;
+        const asc = (font.ascender / em) * t.size, desc = (-font.descender / em) * t.size;
+        const paths = t.lines.map((l, i) => {
+          const adv = font.getAdvanceWidth(l, t.size);
+          const x0 = t.anchor === 'start' ? t.x : t.anchor === 'end' ? t.x - adv : t.x - adv / 2;
+          const base = o.y + i * t.lh + (t.lh - asc - desc) / 2 + asc;
+          const d = font.getPath(l, x0, base, t.size).toPathData(3);
+          const skew = fakeItalic ? ` transform="translate(0 ${n(base)}) skewX(-12) translate(0 ${n(-base)})"` : '';
+          return d ? `<path d="${d}"${skew}/>` : '';
+        }).join('');
+        const boldStroke = fakeBold && o.fill ? ` stroke="${esc(o.fill)}" stroke-width="${n(t.size * 0.035)}" stroke-linejoin="round"` : '';
+        return `<g fill="${o.fill ? esc(o.fill) : 'none'}"${o.stroke ? ` stroke="${esc(o.stroke)}" stroke-width="${n(o.strokeWidth)}"` : boldStroke}${op}${tr}>${paths}</g>`;
+      }
       const spans = t.lines.map((l, i) => `<tspan x="${n(t.x)}" y="${n(t.y0 + i * t.lh)}">${esc(l) || ' '}</tspan>`).join('');
       return `<text font-family="${esc(o.font ?? 'Poppins')}" font-size="${n(t.size)}" font-weight="${o.bold ? 700 : 400}" font-style="${o.italic ? 'italic' : 'normal'}" text-anchor="${t.anchor}" ${paint}${op}${tr}>${spans}</text>`;
     }

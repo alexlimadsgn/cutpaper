@@ -1,6 +1,6 @@
-import { Box, Button, Flex, Group, Heading, IconButton, Text } from '@chakra-ui/react';
+import { Box, Button, Flex, Group, Heading, IconButton, Menu, Portal, Text } from '@chakra-ui/react';
 import {
-  Box as BoxIcon, Circle, Download, Square, Type, FoldVertical, ImagePlus, Map as MapIcon, Minimize2, MousePointer2, Redo2, Scissors, Undo2, Upload,
+  Box as BoxIcon, ChevronDown, Circle, Download, FileCode, FilePlus, FileText, FolderOpen, Save, Square, Type, FoldVertical, ImagePlus, Map as MapIcon, Minimize2, MousePointer2, Redo2, Scissors, Undo2, Upload,
 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { ArtProps } from './components/ArtProps';
@@ -10,7 +10,11 @@ import { Preview3D } from './components/Preview3D';
 import { StructureProps } from './components/StructureProps';
 import { VerifyProps } from './components/VerifyProps';
 import { insertImageObject } from './art/insertImage';
+import { useFontLoader } from './art/useFontLoader';
+import { ensureFonts } from './art/fonts';
+import { buildPdf } from './export/pdf';
 import { buildSvg, download } from './export/svg';
+import { openProjectFile, saveProjectFile } from './io/project';
 import { openSvgFile } from './io/openSvg';
 import { useStore, type Mode } from './store';
 import { useDieline } from './useDieline';
@@ -24,6 +28,7 @@ const MODES: { id: Mode; label: string }[] = [
 
 export default function App() {
   const s = useStore();
+  useFontLoader();
   return (
     <Flex direction="column" h="100vh" bg="gray.100">
       <TopBar />
@@ -45,14 +50,57 @@ export default function App() {
 function TopBar() {
   const s = useStore();
   const { dieline } = useDieline();
-  const exportSvg = () =>
-    download(`cutpaper-${Date.now().toString(36)}.svg`, buildSvg({ ...s, objects: s.doc.objects, dieline }));
+  const [busy, setBusy] = useState<string | null>(null);
+  const stamp = () => new Date().toISOString().slice(0, 10);
+  const input = () => ({ ...s, objects: s.doc.objects, dieline });
+
+  const exportSvg = async () => {
+    setBusy('svg');
+    try {
+      await ensureFonts(s.doc.objects);
+      download(`caixa-${stamp()}.svg`, buildSvg({ ...input(), layers: s.layers }));
+    } finally { setBusy(null); }
+  };
+  const exportPdf = async () => {
+    setBusy('pdf');
+    try {
+      const bytes = await buildPdf(input());
+      const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/pdf' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `caixa-${stamp()}.pdf`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      alert(`Não foi possível gerar o PDF: ${(e as Error).message}`);
+    } finally { setBusy(null); }
+  };
 
   return (
     <Flex h="56px" flexShrink={0} align="center" px={4} gap={4} bg="white" borderBottomWidth="1px" borderColor="gray.200">
-      <Flex align="center" gap={2} w="230px">
-        <Box w="26px" h="26px" borderRadius="md" bg="red.500" color="white" display="grid" placeItems="center"><Scissors size={15} /></Box>
-        <Heading size="md" fontWeight="800" letterSpacing="-0.02em">CutPaper</Heading>
+      <Flex align="center" gap={3} w="230px">
+        <Flex align="center" gap={2}>
+          <Box w="26px" h="26px" borderRadius="md" bg="red.500" color="white" display="grid" placeItems="center"><Scissors size={15} /></Box>
+          <Heading size="md" fontWeight="800" letterSpacing="-0.02em">CutPaper</Heading>
+        </Flex>
+        <Menu.Root>
+          <Menu.Trigger asChild>
+            <Button size="sm" variant="ghost">Arquivo <ChevronDown size={14} /></Button>
+          </Menu.Trigger>
+          <Portal>
+            <Menu.Positioner>
+              <Menu.Content minW="240px">
+                <Menu.Item value="new" onSelect={() => confirm('Começar um projeto novo? O atual será substituído (salve antes se precisar).') && s.reset()}>
+                  <FilePlus size={15} /> Novo projeto
+                </Menu.Item>
+                <Menu.Item value="open" onSelect={() => openProjectFile((m) => alert(m))}><FolderOpen size={15} /> Abrir projeto (.cutpaper)…</Menu.Item>
+                <Menu.Item value="save" onSelect={saveProjectFile}><Save size={15} /> Salvar projeto (.cutpaper)</Menu.Item>
+                <Menu.Separator />
+                <Menu.Item value="import" onSelect={openSvgFile}><Upload size={15} /> Importar die cut (SVG)…</Menu.Item>
+              </Menu.Content>
+            </Menu.Positioner>
+          </Portal>
+        </Menu.Root>
       </Flex>
 
       <Flex flex={1} justify="center">
@@ -80,9 +128,33 @@ function TopBar() {
         <IconButton size="sm" variant="ghost" aria-label="Desfazer" title="Desfazer (Ctrl+Z)" disabled={!s.past.length} onClick={s.undo}><Undo2 size={16} /></IconButton>
         <IconButton size="sm" variant="ghost" aria-label="Refazer" title="Refazer (Ctrl+Shift+Z)" disabled={!s.future.length} onClick={s.redo}><Redo2 size={16} /></IconButton>
         <Box w="1px" h="24px" bg="gray.200" mx={1} />
-        <Button size="sm" variant="ghost" onClick={openSvgFile}><Upload size={15} /> Importar</Button>
-        <Button size="sm" variant="ghost" colorPalette="red" onClick={s.reset}>Novo</Button>
-        <Button size="sm" colorPalette="red" onClick={exportSvg}><Download size={15} /> Exportar SVG</Button>
+        <Menu.Root>
+          <Menu.Trigger asChild>
+            <Button size="sm" colorPalette="red" loading={!!busy} loadingText={busy === 'pdf' ? 'Gerando PDF…' : 'Exportando…'}>
+              <Download size={15} /> Exportar <ChevronDown size={14} />
+            </Button>
+          </Menu.Trigger>
+          <Portal>
+            <Menu.Positioner>
+              <Menu.Content minW="280px">
+                <Menu.Item value="pdf" onSelect={exportPdf}>
+                  <FileText size={15} />
+                  <Box>
+                    <Text fontWeight="600">PDF para gráfica</Text>
+                    <Text fontSize="xs" color="gray.500">Camadas · CutContour/Crease · arte 300 dpi</Text>
+                  </Box>
+                </Menu.Item>
+                <Menu.Item value="svg" onSelect={exportSvg}>
+                  <FileCode size={15} />
+                  <Box>
+                    <Text fontWeight="600">SVG vetorial</Text>
+                    <Text fontSize="xs" color="gray.500">Camadas · texto em contornos</Text>
+                  </Box>
+                </Menu.Item>
+              </Menu.Content>
+            </Menu.Positioner>
+          </Portal>
+        </Menu.Root>
       </Flex>
     </Flex>
   );
