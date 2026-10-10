@@ -14,6 +14,7 @@ import { buildSvg, download } from './export/svg';
 import { openSvgFile } from './io/openSvg';
 import { useStore, type Mode } from './store';
 import { useDieline } from './useDieline';
+import { useChecks } from './verify/useChecks';
 
 const MODES: { id: Mode; label: string }[] = [
   { id: 'structure', label: 'Estrutura' },
@@ -157,23 +158,25 @@ function CanvasArea() {
 
 function StatusBar() {
   const s = useStore();
-  const { dieline, conflicts, viewBox } = useDieline();
-  const bad = new Set(conflicts.map((c) => c.face)).size;
-  const roots = dieline.faces.filter((f) => !f.parent).length;
-  const ok = bad === 0 && roots <= 1;
+  const { dieline, viewBox } = useDieline();
+  const issues = useChecks();
+  const errors = issues.filter((i) => i.severity === 'error').length;
+  const warnings = issues.filter((i) => i.severity === 'warning').length;
   return (
     <Flex h="30px" flexShrink={0} align="center" px={4} gap={4} fontSize="xs" color="gray.500" bg="white" borderTopWidth="1px" borderColor="gray.200">
-      <span>{dieline.faces.length} faces · {Object.keys(s.doc.graph.e).length} linhas</span>
+      <span>{dieline.faces.length} faces · {Object.keys(s.doc.graph.e).length} linhas · {s.doc.objects.length} objetos</span>
       <span>Molde {(viewBox[2] - 4).toFixed(0)} × {(viewBox[3] - 4).toFixed(0)} mm (com sangria)</span>
       <Box flex={1} />
       <Text
         as="button"
-        color={ok ? 'green.600' : 'red.600'}
+        color={errors ? 'red.600' : warnings ? 'orange.600' : 'green.600'}
         fontWeight="600"
         onClick={() => s.setMode('verify')}
         title="Abrir verificação"
       >
-        {ok ? '✓ Montagem OK' : `⚠ ${bad + (roots > 1 ? roots - 1 : 0)} problema(s) de montagem`}
+        {errors || warnings
+          ? [errors && `⚠ ${errors} erro(s)`, warnings && `${warnings} aviso(s)`].filter(Boolean).join(' · ')
+          : '✓ Pronto para imprimir'}
       </Text>
       <span>Roda = zoom · Espaço = mover · Del = excluir</span>
     </Flex>

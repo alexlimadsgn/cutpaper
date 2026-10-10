@@ -1,15 +1,22 @@
-import { Box, Button, Flex, Slider, Stack, Text } from '@chakra-ui/react';
-import { CircleAlert, CircleCheck, Pause, Play } from 'lucide-react';
+import { Box, Button, Flex, SimpleGrid, Slider, Stack, Text } from '@chakra-ui/react';
+import { CircleAlert, CircleCheck, Info, Pause, Play, TriangleAlert } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { COLORS } from '../export/svg';
 import { useStore } from '../store';
-import { useDieline } from '../useDieline';
-import { Check, Section } from './ui';
+import type { Issue, Severity } from '../verify/checks';
+import { useChecks } from '../verify/useChecks';
+import { Check, NumField, Section } from './ui';
 
-/** Propriedades do modo Verificar: dobra, animação e lista de problemas de montagem. */
+const SEV: Record<Severity, { icon: typeof Info; color: string; bg: string; label: string }> = {
+  error: { icon: CircleAlert, color: 'red.700', bg: 'red.50', label: 'Erros' },
+  warning: { icon: TriangleAlert, color: 'orange.700', bg: 'orange.50', label: 'Atenção' },
+  info: { icon: Info, color: 'blue.700', bg: 'blue.50', label: 'Informações' },
+};
+
+/** Propriedades do modo Verificar: dobra, animação e lista de problemas. */
 export function VerifyProps() {
   const s = useStore();
-  const { dieline, conflicts } = useDieline();
+  const issues = useChecks();
   const [playing, setPlaying] = useState(false);
   const raf = useRef(0);
 
@@ -26,19 +33,18 @@ export function VerifyProps() {
     return () => cancelAnimationFrame(raf.current);
   }, [playing]);
 
-  const name = (id: string) => dieline.faces.find((f) => f.id === id)?.name ?? 'face';
-  const roots = dieline.faces.filter((f) => !f.parent);
-  const problems = [
-    ...conflicts.map((c) => ({
-      face: c.face,
-      text: c.kind === 'overlap'
-        ? `"${name(c.face)}" sobrepõe "${name(c.other)}" na caixa montada.`
-        : `"${name(c.face)}" passa da borda de "${name(c.other)}", onde deveria ser colada.`,
-    })),
-    ...(roots.length > 1
-      ? roots.slice(1).map((f) => ({ face: f.id, text: `"${f.name}" não está ligada ao resto por nenhum vinco.` }))
-      : []),
-  ];
+  const open = (i: Issue) => {
+    if (i.object) s.select({ object: i.object, face: i.face });
+    else if (i.face) s.select({ face: i.face });
+  };
+  const fix = (i: Issue) => {
+    const o = s.doc.objects.find((x) => x.id === i.object);
+    if (i.fix === 'rotate180' && o) s.updateObject(o.id, { rotation: (o.rotation + 180) % 360 });
+  };
+  const goEdit = (i: Issue) => {
+    s.setMode(i.object ? 'art' : 'structure');
+    open(i);
+  };
 
   return (
     <>
@@ -66,37 +72,74 @@ export function VerifyProps() {
         </Flex>
       </Section>
 
-      <Section title="Montagem">
-        {problems.length === 0 ? (
+      <Section title="Verificação">
+        {issues.length === 0 ? (
           <Flex gap={2} align="center" color="green.700" bg="green.50" p={3} borderRadius="md" fontSize="sm">
-            <CircleCheck size={18} /> Nenhum problema encontrado.
+            <CircleCheck size={18} /> Tudo certo para imprimir e montar.
           </Flex>
         ) : (
-          <Stack gap={2}>
-            {problems.map((p, i) => (
-              <Flex
-                key={i}
-                as="button"
-                gap={2}
-                textAlign="left"
-                align="flex-start"
-                p={2}
-                borderRadius="md"
-                fontSize="xs"
-                bg={s.sel.face === p.face ? 'red.100' : 'red.50'}
-                color="red.700"
-                _hover={{ bg: 'red.100' }}
-                onClick={() => s.select({ face: p.face })}
-              >
-                <Box pt="1px" flexShrink={0}><CircleAlert size={14} /></Box>
-                {p.text}
-              </Flex>
-            ))}
+          <Stack gap={4}>
+            {(['error', 'warning', 'info'] as Severity[]).map((sev) => {
+              const list = issues.filter((i) => i.severity === sev);
+              if (!list.length) return null;
+              const { icon: Icon, color, bg, label } = SEV[sev];
+              return (
+                <Box key={sev}>
+                  <Text fontSize="xs" fontWeight="700" color={color} mb={2} textTransform="uppercase" letterSpacing="0.05em">
+                    {label} ({list.length})
+                  </Text>
+                  <Stack gap={2}>
+                    {list.map((i, k) => {
+                      const active = (i.object && s.sel.object === i.object) || (!i.object && i.face && s.sel.face === i.face);
+                      return (
+                        <Box
+                          key={k}
+                          p={2}
+                          borderRadius="md"
+                          bg={bg}
+                          borderWidth="1px"
+                          borderColor={active ? color : 'transparent'}
+                          cursor="pointer"
+                          onClick={() => open(i)}
+                        >
+                          <Flex gap={2} align="flex-start" fontSize="xs" color={color}>
+                            <Box pt="1px" flexShrink={0}><Icon size={14} /></Box>
+                            <Box flex={1}>
+                              <Text fontWeight="600" fontSize="2xs" opacity={0.8}>{i.group}</Text>
+                              {i.text}
+                            </Box>
+                          </Flex>
+                          {active && (
+                            <Flex gap={2} mt={2} justify="flex-end">
+                              {i.fix === 'rotate180' && (
+                                <Button size="2xs" colorPalette="orange" onClick={(e) => { e.stopPropagation(); fix(i); }}>Girar 180°</Button>
+                              )}
+                              {(i.object || i.face) && (
+                                <Button size="2xs" variant="outline" bg="white" onClick={(e) => { e.stopPropagation(); goEdit(i); }}>
+                                  Editar no modo {i.object ? 'Arte' : 'Estrutura'}
+                                </Button>
+                              )}
+                            </Flex>
+                          )}
+                        </Box>
+                      );
+                    })}
+                  </Stack>
+                </Box>
+              );
+            })}
           </Stack>
         )}
         <Text fontSize="xs" color="gray.500" mt={3}>
-          A verificação simula a caixa 100% montada. Clique num problema para localizar a face.
+          A verificação simula a caixa 100% montada. Clique num item para localizá-lo.
         </Text>
+      </Section>
+
+      <Section title="Critérios">
+        <SimpleGrid columns={2} gap={3}>
+          <NumField label="Margem do texto (mm)" step={0.5} value={s.safeMargin} onChange={s.setSafeMargin} />
+          <NumField label="Resolução mínima (dpi)" step={50} value={s.minDpi} onChange={s.setMinDpi} />
+        </SimpleGrid>
       </Section>
 
       <Section title="Linhas visíveis">

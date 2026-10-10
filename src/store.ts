@@ -64,6 +64,9 @@ interface State {
   importInfo?: string;
   /** Incrementado quando o molde é substituído (o editor reenquadra a vista). */
   fitToken: number;
+  /** Verificação: distância mínima do texto até corte/vinco (mm) e dpi mínimo. */
+  safeMargin: number;
+  minDpi: number;
 
   /** Aplica uma alteração ao documento e grava no histórico. */
   commit: (doc: Partial<Doc>, source?: State['source']) => void;
@@ -84,6 +87,8 @@ interface State {
   setMode: (m: Mode) => void;
   setBgColor: (c?: string) => void;
   setFaceColor: (id: string, c?: string) => void;
+  setSafeMargin: (v: number) => void;
+  setMinDpi: (v: number) => void;
 
   addObject: (o: ArtObject) => void;
   /** Altera um objeto e grava no histórico. */
@@ -132,6 +137,8 @@ export const useStore = create<State>((set, get) => ({
   dragging: false,
   grid: 1,
   fitToken: 0,
+  safeMargin: 3,
+  minDpi: 300,
 
   commit: (patch, source = 'edited') =>
     set((s) => ({
@@ -205,6 +212,8 @@ export const useStore = create<State>((set, get) => ({
       sel: mode === 'structure' ? { ...EMPTY_SEL, face: s.sel.face } : { ...EMPTY_SEL, face: s.sel.face, object: s.sel.object },
     })),
   setBgColor: (bgColor) => set({ bgColor }),
+  setSafeMargin: (safeMargin) => set({ safeMargin }),
+  setMinDpi: (minDpi) => set({ minDpi }),
 
   addObject: (o) => {
     get().commit({ objects: [...get().doc.objects, o] });
