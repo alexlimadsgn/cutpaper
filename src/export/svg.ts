@@ -10,6 +10,8 @@ export interface SvgInput {
   layers: Layers;
   fullImage?: string;
   faceImages: Record<string, string>;
+  faceColors?: Record<string, string>;
+  bgColor?: string;
   /** Fundo atrás da arte (usado na textura 3D). */
   background?: string;
 }
@@ -27,15 +29,29 @@ export function viewBoxOf(polys: Vec2[][], pad = 2) {
  * Camada de arte (defs + grupo), compartilhada pelo editor, pela textura 3D e pelo export.
  * `prefix` evita colisão de ids de clipPath quando há mais de um SVG na página.
  */
-export function buildArt(dieline: Dieline, bleedPolys: Vec2[][], fullImage: string | undefined, faceImages: Record<string, string>, prefix = 'cp') {
+export interface ArtInput {
+  fullImage?: string;
+  faceImages: Record<string, string>;
+  faceColors?: Record<string, string>;
+  bgColor?: string;
+}
+
+export function buildArt(dieline: Dieline, bleedPolys: Vec2[][], art: ArtInput, prefix = 'cp') {
+  const { fullImage, faceImages, faceColors = {}, bgColor } = art;
   const defs: string[] = [`<clipPath id="${prefix}-bleed"><path clip-rule="evenodd" d="${polyToPath(bleedPolys)}"/></clipPath>`];
   const body: string[] = [];
+  // ordem de pintura: cor de fundo → imagem inteira → cor da face → imagem da face
+  if (bgColor) body.push(`<path fill-rule="evenodd" fill="${esc(bgColor)}" d="${polyToPath(bleedPolys)}"/>`);
   if (fullImage) {
     const fb = bounds(bleedPolys);
     body.push(
       `<g clip-path="url(#${prefix}-bleed)"><image href="${esc(fullImage)}" x="${fb.minX}" y="${fb.minY}" width="${fb.w}" height="${fb.h}" preserveAspectRatio="xMidYMid slice"/></g>`,
     );
   }
+  dieline.faces.forEach((f) => {
+    const color = faceColors[f.id];
+    if (color) body.push(`<path fill-rule="evenodd" fill="${esc(color)}" d="${polyToPath([f.poly, ...f.holes])}"/>`);
+  });
   dieline.faces.forEach((f, i) => {
     const img = faceImages[f.id];
     if (!img) return;
@@ -52,11 +68,11 @@ export function buildArt(dieline: Dieline, bleedPolys: Vec2[][], fullImage: stri
  * Gera o SVG 1:1 em milímetros com camadas nomeadas
  * (ARTE, SANGRIA, CORTE, VINCO) — compatível com Illustrator/Inkscape/Silhouette.
  */
-export function buildSvg({ dieline, bleed, layers, fullImage, faceImages, background }: SvgInput): string {
+export function buildSvg({ dieline, bleed, layers, fullImage, faceImages, faceColors, bgColor, background }: SvgInput): string {
   const material = materialOutline(dieline);
   const bl = bleedOutline(material, bleed);
   const vb = viewBoxOf(bl.length ? bl : material);
-  const art = buildArt(dieline, bl, fullImage, faceImages, 'x');
+  const art = buildArt(dieline, bl, { fullImage, faceImages, faceColors, bgColor }, 'x');
   const out: string[] = [];
   out.push(
     `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="${vb[2]}mm" height="${vb[3]}mm" viewBox="${vb.join(' ')}">`,

@@ -20,11 +20,13 @@ interface Snap { p: Vec2; kind: 'vertex' | 'edge' | 'grid' | 'free'; vid?: strin
 
 const SNAP_PX = 8;
 
-export function Editor2D() {
+export function Editor2D({ compact = false }: { compact?: boolean }) {
   const { dieline, material, bleedPolys, conflicts, viewBox: fitBox } = useDieline();
   const bad = new Set(conflicts.map((c) => c.face));
   const s = useStore();
   const { graph } = s.doc;
+  // fora do modo Estrutura (ou na miniatura) o molde fica travado: só faces são clicáveis
+  const editable = s.mode === 'structure' && !compact;
   const wrapRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -227,7 +229,7 @@ export function Editor2D() {
     if (a.kind === 'drag') s.endDrag(a.moved);
     if (a.kind === 'marquee') {
       setMarquee(null);
-      if (!a.moved) return s.select(a.face ? { face: a.face } : {});
+      if (!a.moved || !editable) return s.select(a.face ? { face: a.face } : {});
       const [x0, x1] = [Math.min(a.start[0], a.cur[0]), Math.max(a.start[0], a.cur[0])];
       const [y0, y1] = [Math.min(a.start[1], a.cur[1]), Math.max(a.start[1], a.cur[1])];
       const inside = Object.keys(graph.v).filter((id) => {
@@ -263,11 +265,12 @@ export function Editor2D() {
       if (e.type !== 'keydown') return;
       if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); return e.shiftKey ? st.redo() : st.undo(); }
       if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); return st.redo(); }
-      if (mod && e.key.toLowerCase() === 'a') {
+      if (mod && e.key.toLowerCase() === 'a' && st.mode === 'structure') {
         e.preventDefault();
         return st.select({ vertices: Object.keys(g.v), edges: Object.keys(g.e) });
       }
       if (mod) return;
+      if (st.mode !== 'structure' && e.key !== 'Escape') return;
       switch (e.key) {
         case 'Escape':
           setDraw({ start: null, hover: null });
@@ -313,9 +316,9 @@ export function Editor2D() {
   const frozen = useRef({ dieline, bleedPolys });
   if (!s.dragging) frozen.current = { dieline, bleedPolys };
   const art = useMemo(
-    () => buildArt(frozen.current.dieline, frozen.current.bleedPolys, s.fullImage, s.faceImages, 'ed'),
+    () => buildArt(frozen.current.dieline, frozen.current.bleedPolys, s, 'ed'),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [frozen.current, s.fullImage, s.faceImages],
+    [frozen.current, s.fullImage, s.faceImages, s.faceColors, s.bgColor],
   );
 
   const selV = new Set(s.sel.vertices), selE = new Set(s.sel.edges);
@@ -387,9 +390,9 @@ export function Editor2D() {
             data-id={f.id}
             d={polyToPath([f.poly, ...f.holes])}
             fillRule="evenodd"
-            fill={bad.has(f.id) ? 'url(#ed-bad)' : s.sel.face === f.id ? 'rgba(229,38,46,0.12)' : 'transparent'}
-            stroke={s.sel.face === f.id ? '#E5262E' : 'none'}
-            strokeWidth={2}
+            fill={bad.has(f.id) ? 'url(#ed-bad)' : s.sel.face === f.id && s.mode === 'structure' ? 'rgba(229,38,46,0.12)' : 'transparent'}
+            stroke={s.sel.face === f.id ? '#F59E0B' : 'none'}
+            strokeWidth={s.mode === 'structure' ? 2 : 3}
             vectorEffect="non-scaling-stroke"
           >
             <title>{f.name}</title>
@@ -412,14 +415,14 @@ export function Editor2D() {
                 vectorEffect="non-scaling-stroke"
                 pointerEvents="none"
               />
-              {s.tool === 'select' && (
+              {editable && s.tool === 'select' && (
                 <line data-kind="edge" data-id={id} x1={A.x} y1={A.y} x2={B.x} y2={B.y} stroke="transparent" strokeWidth={10 * px} style={{ cursor: 'move' }} />
               )}
             </g>
           );
         })}
 
-        {s.tool === 'select' &&
+        {editable && s.tool === 'select' &&
           [...new Set([...handles, ...s.sel.vertices])].filter((id) => graph.v[id]).map((id) => {
             const p = graph.v[id];
             const r = (selV.has(id) ? 4.5 : 3.5) * px;
@@ -464,17 +467,17 @@ export function Editor2D() {
         )}
       </svg>
 
-      {s.tool !== 'select' && (
+      {editable && s.tool !== 'select' && (
         <Text position="absolute" top={3} left="50%" transform="translateX(-50%)" fontSize="xs" bg="white" px={3} py={1} borderRadius="full" shadow="sm" color="gray.600">
           Clique para desenhar {s.tool === 'cut' ? 'corte' : 'vinco'} · Shift = 45° · Esc/duplo clique encerra
         </Text>
       )}
 
-      <Group attached position="absolute" bottom={4} right={4} bg="white" borderRadius="md" shadow="sm">
+      {!compact && <Group attached position="absolute" bottom={4} left={4} bg="white" borderRadius="md" shadow="sm">
         <IconButton size="sm" variant="outline" aria-label="Diminuir zoom" onClick={() => setView((c) => c && { ...c, scale: c.scale / 1.25 })}>−</IconButton>
         <Button size="sm" variant="outline" onClick={fit} title="Ajustar à tela">{Math.round(v.scale * 100 / 3.78)}%</Button>
         <IconButton size="sm" variant="outline" aria-label="Aumentar zoom" onClick={() => setView((c) => c && { ...c, scale: c.scale * 1.25 })}>+</IconButton>
-      </Group>
+      </Group>}
     </Box>
   );
 }

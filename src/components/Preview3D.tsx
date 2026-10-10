@@ -13,13 +13,13 @@ const MM = 0.01; // 100 mm = 1 unidade
 /** Rasteriza a arte (mesmo SVG do export) numa textura para o 3D. */
 function useArtTexture() {
   const { dieline, viewBox } = useDieline();
-  const { bleed, fullImage, faceImages, dragging } = useStore();
+  const { bleed, fullImage, faceImages, faceColors, bgColor, dragging } = useStore();
   const [texture, setTexture] = useState<THREE.Texture>();
 
   useEffect(() => {
     if (dragging) return; // a textura é refeita ao soltar
     const svg = buildSvg({
-      dieline, bleed, fullImage, faceImages, background: '#ffffff',
+      dieline, bleed, fullImage, faceImages, faceColors, bgColor, background: '#ffffff',
       layers: { artwork: true, bleed: false, cut: false, crease: false },
     });
     const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
@@ -40,7 +40,7 @@ function useArtTexture() {
     };
     img.src = url;
     return () => { cancelled = true; };
-  }, [dieline, bleed, fullImage, faceImages, viewBox, dragging]);
+  }, [dieline, bleed, fullImage, faceImages, faceColors, bgColor, viewBox, dragging]);
 
   return texture;
 }
@@ -136,9 +136,11 @@ function Box3D() {
   );
 }
 
-export function Preview3D() {
+export function Preview3D({ compact = false }: { compact?: boolean }) {
+  // na miniatura a câmera fica mais afastada para caber a caixa inteira
+  const k = compact ? 1.3 : 1;
   return (
-    <Canvas camera={{ position: [2.2, 2, 2.8], fov: 35 }} dpr={[1, 2]}>
+    <Canvas camera={{ position: [2.2 * k, 2 * k, 2.8 * k], fov: 35 }} dpr={[1, 2]}>
       <color attach="background" args={['#f4f4f5']} />
       <ambientLight intensity={1.4} />
       <directionalLight position={[3, 5, 2]} intensity={1.6} />

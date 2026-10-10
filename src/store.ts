@@ -21,6 +21,9 @@ export interface Doc {
 
 export type Tool = 'select' | 'cut' | 'crease';
 
+/** Modo de trabalho: desenhar o molde, decorar, ou conferir a montagem. */
+export type Mode = 'structure' | 'art' | 'verify';
+
 export interface Selection {
   vertices: string[];
   edges: string[];
@@ -43,6 +46,11 @@ interface State {
   faceImages: Record<string, string>;
   fold: number; // 0..1
   tool: Tool;
+  mode: Mode;
+  /** Cor de fundo do molde inteiro (até a sangria). */
+  bgColor?: string;
+  /** Cor de fundo por face. */
+  faceColors: Record<string, string>;
   sel: Selection;
   /** Arrastando vértices: atualizações ao vivo sem histórico. */
   dragging: boolean;
@@ -69,6 +77,9 @@ interface State {
   setFaceImage: (id: string, url?: string) => void;
   setFold: (v: number) => void;
   setTool: (t: Tool) => void;
+  setMode: (m: Mode) => void;
+  setBgColor: (c?: string) => void;
+  setFaceColor: (id: string, c?: string) => void;
   select: (sel: Partial<Selection>) => void;
   setGrid: (v: number) => void;
   reset: () => void;
@@ -95,6 +106,8 @@ export const useStore = create<State>((set, get) => ({
   faceImages: {},
   fold: 0.6,
   tool: 'select',
+  mode: 'structure',
+  faceColors: {},
   sel: EMPTY_SEL,
   dragging: false,
   grid: 1,
@@ -162,10 +175,25 @@ export const useStore = create<State>((set, get) => ({
     }),
   setFold: (fold) => set({ fold }),
   setTool: (tool) => set({ tool }),
+  setMode: (mode) =>
+    set((s) => ({
+      mode,
+      // fora do modo Estrutura o molde fica travado: só faces podem ser selecionadas
+      tool: mode === 'structure' ? s.tool : 'select',
+      sel: mode === 'structure' ? s.sel : { ...EMPTY_SEL, face: s.sel.face },
+    })),
+  setBgColor: (bgColor) => set({ bgColor }),
+  setFaceColor: (id, c) =>
+    set((s) => {
+      const faceColors = { ...s.faceColors };
+      if (c) faceColors[id] = c;
+      else delete faceColors[id];
+      return { faceColors };
+    }),
   select: (sel) => set({ sel: { ...EMPTY_SEL, ...sel } }),
   setGrid: (grid) => set({ grid }),
   reset: () => {
-    set({ params: DEFAULT_PARAMS, bleed: 3, fullImage: undefined, faceImages: {}, sel: EMPTY_SEL, template: 'lidBox' });
+    set({ params: DEFAULT_PARAMS, bleed: 3, fullImage: undefined, faceImages: {}, faceColors: {}, bgColor: undefined, sel: EMPTY_SEL, template: 'lidBox' });
     get().regenerate();
   },
 }));

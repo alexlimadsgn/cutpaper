@@ -30,6 +30,7 @@ export function loadSvgText(name: string, text: string) {
     useStore.setState((s) => ({
       fitToken: s.fitToken + 1,
       faceImages: {},
+      faceColors: {},
       importInfo: `${name}: ${stats.cut} elemento(s) de corte, ${stats.crease} de vinco${stats.skipped ? `, ${stats.skipped} ignorado(s)` : ''}.`,
     }));
   } catch (err) {
