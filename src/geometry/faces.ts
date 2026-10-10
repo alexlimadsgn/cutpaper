@@ -98,8 +98,8 @@ function components(g: Graph) {
   return find;
 }
 
-function chain(g: Graph, type: EdgeType): Vec2[][] {
-  const ids = Object.keys(g.e).filter((k) => g.e[k].type === type).sort(byId);
+function chain(g: Graph, type: EdgeType, skip: Set<string> = new Set()): Vec2[][] {
+  const ids = Object.keys(g.e).filter((k) => g.e[k].type === type && !skip.has(k)).sort(byId);
   const adj = new Map<string, string[]>();
   for (const k of ids) {
     const { a, b } = g.e[k];
@@ -165,6 +165,18 @@ export function deriveDieline(g: Graph, names: Record<string, string> = {}, root
     for (const l of list)
       if (l.area > EPS && l.edges.every((e) => g.e[e].type === 'cut')) waste.add(l.id);
   }
+  // furos de corte que encostam em vincos (ex.: janela atravessada por uma dobra): uma região fechada
+  // só por linhas de corte, dentro de outra região de corte, é vazio — tudo o que estiver nela é descartado
+  const cutGraph: Graph = { v: g.v, e: Object.fromEntries(Object.entries(g.e).filter(([, e]) => e.type === 'cut')), next: g.next };
+  const cutRegions = traceLoops(cutGraph)
+    .filter((l) => l.area > EPS)
+    .map((l) => ({ area: l.area, poly: pts(l), probe: interiorPoint(g, l) }));
+  const cutHoles = cutRegions.filter((r) => cutRegions.some((o) => o !== r && o.area > r.area && pointInPoly(r.probe, o.poly)));
+  if (cutHoles.length)
+    for (const f of faces.values()) {
+      const probe = interiorPoint(g, f.loop);
+      if (cutHoles.some((h) => pointInPoly(probe, h.poly))) waste.add(f.id);
+    }
   for (const id of waste) faces.delete(id);
 
   // adjacência por vinco
@@ -226,7 +238,28 @@ export function deriveDieline(g: Graph, names: Record<string, string> = {}, root
       parent: f.parent, hinge: f.hinge, angle: f.angle,
     }));
 
-  return { faces: list, cuts: chain(g, 'cut'), creases: chain(g, 'crease') };
+  // vincos que não tocam nenhum painel (o trecho que passa pelo vazio de um furo) não existem no papel
+  const panelHe = new Set([...faces.values()].flatMap((f) => f.loop.halfEdges));
+  const dead = Object.keys(g.e).filter((e) => g.e[e].type === 'crease' && !panelHe.has(he(e, 0)) && !panelHe.has(he(e, 1)));
+
+  return { faces: list, cuts: chain(g, 'cut'), creases: chain(g, 'crease', new Set(dead)), dead };
+}
+
+/**
+ * Ponto garantidamente dentro de um laço de área positiva: meio da aresta mais longa,
+ * deslocado um pouco para a esquerda (lado interno no sentido anti-horário).
+ */
+function interiorPoint(g: Graph, l: Loop): Vec2 {
+  let best = 0, bi = 0;
+  for (let i = 0; i < l.verts.length; i++) {
+    const a = g.v[l.verts[i]], b = g.v[l.verts[(i + 1) % l.verts.length]];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len > best) { best = len; bi = i; }
+  }
+  const a = g.v[l.verts[bi]], b = g.v[l.verts[(bi + 1) % l.verts.length]];
+  const dx = (b.x - a.x) / best, dy = (b.y - a.y) / best;
+  const off = Math.min(0.05, best * 0.1);
+  return [(a.x + b.x) / 2 - dy * off, (a.y + b.y) / 2 + dx * off];
 }
 
 export const centroid = (p: Vec2[]): Vec2 => [

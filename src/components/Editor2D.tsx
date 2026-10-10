@@ -22,7 +22,13 @@ type Interaction =
   | { kind: 'obj-rotate'; base: ArtObject; moved: boolean }
   | { kind: 'obj-create'; type: ArtType; start: Vec2; cur: Vec2; face?: string };
 
-interface Snap { p: Vec2; kind: 'vertex' | 'edge' | 'grid' | 'free'; vid?: string }
+interface Snap {
+  p: Vec2;
+  kind: 'vertex' | 'edge' | 'align' | 'grid' | 'free';
+  vid?: string;
+  /** Linhas-guia de alinhamento: de um ponto de referência até o ponto encaixado. */
+  guides?: [Vec2, Vec2][];
+}
 
 const SNAP_PX = 8;
 
@@ -45,6 +51,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
   const [draw, setDraw] = useState<{ start: Vec2 | null; hover: Snap | null }>({ start: null, hover: null });
   const [creating, setCreating] = useState<{ type: ArtType; a: Vec2; b: Vec2 } | null>(null);
   const [space, setSpace] = useState(false);
+  const [dragGuides, setDragGuides] = useState<[Vec2, Vec2][]>([]);
 
   // ---------- viewport ----------
   useEffect(() => {
@@ -93,7 +100,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
   // ---------- snap ----------
   const snapGrid = (p: Vec2): Vec2 => (s.grid > 0 ? [Math.round(p[0] / s.grid) * s.grid, Math.round(p[1] / s.grid) * s.grid] : p);
 
-  const snapPoint = (p: Vec2, exclude: Set<string> = new Set(), edges = true): Snap => {
+  const snapPoint = (p: Vec2, exclude: Set<string> = new Set(), edges = true, from?: Vec2 | null): Snap => {
     const r = SNAP_PX * px;
     let best: Snap | null = null, bd = r;
     for (const id in graph.v) {
@@ -113,6 +120,24 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
         if (d < bd) { bd = d; best = { p: q, kind: 'edge' }; }
       }
       if (best) return best;
+    }
+    // alinhamento horizontal/vertical com vértices existentes (e com o início da linha)
+    const ar = 6 * px;
+    let ax: { v: number; ref: Vec2; d: number } | undefined, ay: typeof ax;
+    const refs: Vec2[] = Object.keys(graph.v).filter((id) => !exclude.has(id)).map((id) => [graph.v[id].x, graph.v[id].y]);
+    if (from) refs.push(from);
+    for (const q of refs) {
+      const dx = Math.abs(q[0] - p[0]), dy = Math.abs(q[1] - p[1]);
+      if (dx < ar && (!ax || dx < ax.d || (dx === ax.d && Math.abs(q[1] - p[1]) < Math.abs(ax.ref[1] - p[1])))) ax = { v: q[0], ref: q, d: dx };
+      if (dy < ar && (!ay || dy < ay.d || (dy === ay.d && Math.abs(q[0] - p[0]) < Math.abs(ay.ref[0] - p[0])))) ay = { v: q[1], ref: q, d: dy };
+    }
+    if (ax || ay) {
+      const g = snapGrid(p);
+      const pt: Vec2 = [ax ? ax.v : g[0], ay ? ay.v : g[1]];
+      const guides: [Vec2, Vec2][] = [];
+      if (ax) guides.push([ax.ref, pt]);
+      if (ay) guides.push([ay.ref, pt]);
+      return { p: pt, kind: 'align', guides };
     }
     return s.grid > 0 ? { p: snapGrid(p), kind: 'grid' } : { p, kind: 'free' };
   };
@@ -190,7 +215,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
     }
 
     if (isLineTool) {
-      const snap = snapPoint(p);
+      const snap = snapPoint(p, undefined, true, draw.start);
       let pt = snap.p;
       if (draw.start && e.shiftKey && snap.kind !== 'vertex') pt = constrain(draw.start, p);
       if (!draw.start) return setDraw({ start: pt, hover: snap });
@@ -269,8 +294,8 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
     const a = act.current;
     if (!a) {
       if (isLineTool) {
-        const snap = snapPoint(p);
-        if (draw.start && e.shiftKey && snap.kind !== 'vertex') snap.p = constrain(draw.start, p);
+        const snap = snapPoint(p, undefined, true, draw.start);
+        if (draw.start && e.shiftKey && snap.kind !== 'vertex') { snap.p = constrain(draw.start, p); snap.guides = undefined; }
         setDraw((d) => ({ ...d, hover: snap }));
       }
       return;
@@ -303,6 +328,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
       a.moved = true;
       s.setObjectLive(a.base.id, { rotation: +deg.toFixed(2) });
     } else if (a.kind === 'drag') {
+      setDragGuides([]);
       const base = a.base.v[a.anchor];
       let target: Vec2 = [base.x + p[0] - a.start[0], base.y + p[1] - a.start[1]];
       if (e.shiftKey) target = Math.abs(target[0] - base.x) > Math.abs(target[1] - base.y) ? [target[0], base.y] : [base.x, target[1]];
@@ -313,13 +339,15 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
           // alinhamento com X/Y de outros vértices, senão grade
           const g = snapGrid(target);
           let ax = g[0], ay = g[1];
+          let rx: Vec2 | undefined, ry: Vec2 | undefined;
           for (const id in a.base.v) {
             if (a.ids.includes(id)) continue;
             const o = a.base.v[id];
-            if (Math.abs(o.x - target[0]) < 5 * px) ax = o.x;
-            if (Math.abs(o.y - target[1]) < 5 * px) ay = o.y;
+            if (Math.abs(o.x - target[0]) < 5 * px) { ax = o.x; rx = [o.x, o.y]; }
+            if (Math.abs(o.y - target[1]) < 5 * px) { ay = o.y; ry = [o.x, o.y]; }
           }
           target = [ax, ay];
+          setDragGuides([...(rx ? [[rx, target] as [Vec2, Vec2]] : []), ...(ry ? [[ry, target] as [Vec2, Vec2]] : [])]);
         }
       }
       const dx = target[0] - base.x, dy = target[1] - base.y;
@@ -332,6 +360,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
     const a = act.current;
     act.current = null;
     if (!a) return;
+    setDragGuides([]);
     if (a.kind === 'drag' || a.kind === 'obj-move' || a.kind === 'obj-resize' || a.kind === 'obj-rotate') s.endDrag(a.moved);
     if (a.kind === 'obj-create') {
       setCreating(null);
@@ -471,6 +500,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
   );
 
   const selV = new Set(s.sel.vertices), selE = new Set(s.sel.edges);
+  const dead = new Set(dieline.dead);
 
   // alças só nos cantos reais; vértices intermediários de curvas aparecem com zoom ou se selecionados
   const handles = useMemo(() => {
@@ -579,7 +609,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
                 stroke={selected ? '#F59E0B' : e.type === 'cut' ? COLORS.cut : COLORS.crease}
                 strokeWidth={selected ? 2.5 : 1.25}
                 strokeDasharray={e.type === 'crease' ? '6 4' : undefined}
-                strokeOpacity={visible || selected ? 1 : 0.15}
+                strokeOpacity={selected ? 1 : !visible ? 0.15 : dead.has(id) ? 0.3 : 1}
                 vectorEffect="non-scaling-stroke"
                 pointerEvents="none"
               />
@@ -653,10 +683,26 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
             pointerEvents="none"
           />
         )}
+        {dragGuides.map(([a, b], i) => (
+          <line key={`dg${i}`} x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} stroke="#D946EF" strokeWidth={1} strokeDasharray="3 3" vectorEffect="non-scaling-stroke" pointerEvents="none" />
+        ))}
+        {isLineTool && draw.hover?.guides?.map(([a, b], i) => (
+          <line key={i} x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} stroke="#D946EF" strokeWidth={1} strokeDasharray="3 3" vectorEffect="non-scaling-stroke" pointerEvents="none" />
+        ))}
+        {isLineTool && draw.start && draw.hover && (() => {
+          const [x, y] = draw.hover.p;
+          const len = Math.hypot(x - draw.start[0], y - draw.start[1]);
+          const ang = (Math.atan2(-(y - draw.start[1]), x - draw.start[0]) * 180) / Math.PI;
+          return (
+            <text x={x + 10 * px} y={y - 10 * px} fontSize={11 * px} fill="#334155" stroke="white" strokeWidth={3 * px} paintOrder="stroke" pointerEvents="none">
+              {len.toFixed(1)} mm · {((ang + 360) % 360).toFixed(0)}°
+            </text>
+          );
+        })()}
         {isLineTool && draw.hover && (
           <circle
             cx={draw.hover.p[0]} cy={draw.hover.p[1]} r={(draw.hover.kind === 'vertex' ? 6 : 4) * px}
-            fill="none" stroke={draw.hover.kind === 'vertex' ? '#F59E0B' : draw.hover.kind === 'edge' ? '#8B5CF6' : '#64748B'}
+            fill="none" stroke={draw.hover.kind === 'vertex' ? '#F59E0B' : draw.hover.kind === 'edge' ? '#8B5CF6' : draw.hover.kind === 'align' ? '#D946EF' : '#64748B'}
             strokeWidth={1.5} vectorEffect="non-scaling-stroke" pointerEvents="none"
           />
         )}

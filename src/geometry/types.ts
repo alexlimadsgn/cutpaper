@@ -22,6 +22,8 @@ export interface Dieline {
   cuts: Vec2[][];
   /** Linhas de vinco encadeadas em polilinhas. */
   creases: Vec2[][];
+  /** Arestas de vinco sem efeito (passam pelo vazio de um furo); não são exportadas. */
+  dead: string[];
 }
 
 export interface BoxParams {

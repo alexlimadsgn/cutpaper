@@ -36,7 +36,7 @@ export default function App() {
         <ToolRail />
         <LayersPanel />
         <CanvasArea />
-        <Box w="320px" flexShrink={0} bg="white" borderLeftWidth="1px" borderColor="gray.200" overflowY="auto" px={5} py={4}>
+        <Box w={{ base: '260px', xl: '320px' }} flexShrink={0} bg="white" borderLeftWidth="1px" borderColor="gray.200" overflowY="auto" px={5} py={4}>
           {s.mode === 'structure' && <StructureProps />}
           {s.mode === 'art' && <ArtProps />}
           {s.mode === 'verify' && <VerifyProps />}
@@ -77,11 +77,11 @@ function TopBar() {
   };
 
   return (
-    <Flex h="56px" flexShrink={0} align="center" px={4} gap={4} bg="white" borderBottomWidth="1px" borderColor="gray.200">
-      <Flex align="center" gap={3} w="230px">
+    <Flex h="56px" flexShrink={0} align="center" px={{ base: 2, md: 4 }} gap={{ base: 2, md: 4 }} bg="white" borderBottomWidth="1px" borderColor="gray.200">
+      <Flex align="center" gap={{ base: 1, md: 3 }} w={{ base: 'auto', lg: '230px' }} flexShrink={0}>
         <Flex align="center" gap={2}>
           <Box w="26px" h="26px" borderRadius="md" bg="red.500" color="white" display="grid" placeItems="center"><Scissors size={15} /></Box>
-          <Heading size="md" fontWeight="800" letterSpacing="-0.02em">CutPaper</Heading>
+          <Heading size="md" fontWeight="800" letterSpacing="-0.02em" display={{ base: 'none', md: 'block' }}>CutPaper</Heading>
         </Flex>
         <Menu.Root>
           <Menu.Trigger asChild>
@@ -109,7 +109,7 @@ function TopBar() {
             <Button
               key={m.id}
               size="sm"
-              px={5}
+              px={{ base: 2, md: 5 }}
               borderRadius="md"
               variant={s.mode === m.id ? 'solid' : 'ghost'}
               bg={s.mode === m.id ? 'white' : 'transparent'}
@@ -124,7 +124,7 @@ function TopBar() {
         </Group>
       </Flex>
 
-      <Flex gap={2} align="center">
+      <Flex gap={{ base: 1, md: 2 }} align="center" flexShrink={0}>
         <IconButton size="sm" variant="ghost" aria-label="Desfazer" title="Desfazer (Ctrl+Z)" disabled={!s.past.length} onClick={s.undo}><Undo2 size={16} /></IconButton>
         <IconButton size="sm" variant="ghost" aria-label="Refazer" title="Refazer (Ctrl+Shift+Z)" disabled={!s.future.length} onClick={s.redo}><Redo2 size={16} /></IconButton>
         <Box w="1px" h="24px" bg="gray.200" mx={1} />
@@ -209,7 +209,7 @@ function CanvasArea() {
   const main3D = mode === 'verify';
 
   return (
-    <Box flex={1} minW={0} position="relative" bg="gray.50">
+    <Box flex={1} minW="240px" position="relative" bg="gray.50">
       {main3D ? <Box position="absolute" inset={0}><Preview3D /></Box> : <Editor2D />}
       {miniOpen ? (
         <Box position="absolute" top={3} right={3} w="min(300px, 32%)" h="min(230px, 30%)" minW="160px" minH="120px" bg="white" borderRadius="lg" shadow="lg" borderWidth="1px" borderColor="gray.200" overflow="hidden">
@@ -237,7 +237,7 @@ function StatusBar() {
   return (
     <Flex h="30px" flexShrink={0} align="center" px={4} gap={4} fontSize="xs" color="gray.500" bg="white" borderTopWidth="1px" borderColor="gray.200">
       <span>{dieline.faces.length} faces · {Object.keys(s.doc.graph.e).length} linhas · {s.doc.objects.length} objetos</span>
-      <span>Molde {(viewBox[2] - 4).toFixed(0)} × {(viewBox[3] - 4).toFixed(0)} mm (com sangria)</span>
+      <Box as="span" display={{ base: 'none', lg: 'inline' }}>Molde {(viewBox[2] - 4).toFixed(0)} × {(viewBox[3] - 4).toFixed(0)} mm (com sangria)</Box>
       <Box flex={1} />
       <Text
         as="button"
@@ -250,7 +250,7 @@ function StatusBar() {
           ? [errors && `⚠ ${errors} erro(s)`, warnings && `${warnings} aviso(s)`].filter(Boolean).join(' · ')
           : '✓ Pronto para imprimir'}
       </Text>
-      <span>Roda = zoom · Espaço = mover · Del = excluir</span>
+      <Box as="span" display={{ base: 'none', xl: 'inline' }}>Roda = zoom · Espaço = mover · Del = excluir</Box>
     </Flex>
   );
 }

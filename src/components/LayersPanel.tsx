@@ -73,7 +73,7 @@ export function LayersPanel() {
   const free = objsOf.get(undefined) ?? [];
 
   return (
-    <Flex direction="column" w="230px" flexShrink={0} bg="white" borderRightWidth="1px" borderColor="gray.200" minH={0}>
+    <Flex direction="column" w="230px" flexShrink={0} bg="white" borderRightWidth="1px" borderColor="gray.200" minH={0} display={{ base: 'none', lg: 'flex' }}>
       <Flex px={4} py={3} borderBottomWidth="1px" borderColor="gray.100" justify="space-between" align="baseline">
         <Heading size="xs" fontWeight="700" textTransform="uppercase" letterSpacing="0.06em" color="gray.600">Camadas</Heading>
         <Text fontSize="xs" color="gray.400">{dieline.faces.length} faces · {s.doc.objects.length} objetos</Text>

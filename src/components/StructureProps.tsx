@@ -1,7 +1,6 @@
-import { Button, NativeSelect, SimpleGrid, Text } from '@chakra-ui/react';
+import { NativeSelect, SimpleGrid, Text } from '@chakra-ui/react';
 import { graphBounds, scaleGraph } from '../geometry/graph';
 import { TEMPLATES, type TemplateId } from '../geometry/templates';
-import { openSvgFile } from '../io/openSvg';
 import { useStore } from '../store';
 import { Inspector } from './Inspector';
 import { NumField, Section } from './ui';
@@ -34,8 +33,7 @@ export function StructureProps() {
           <NumField label="Sangria (mm)" value={s.bleed} step={0.5} onChange={s.setBleed} />
           <NumField label="Grade/snap (mm)" value={s.grid} step={0.5} onChange={s.setGrid} />
         </SimpleGrid>
-        <Button w="full" size="sm" variant="outline" mt={4} onClick={openSvgFile}>Importar die cut (SVG)</Button>
-        {s.importInfo && <Text fontSize="xs" color="gray.600" mt={2}>{s.importInfo}</Text>}
+        {s.importInfo && <Text fontSize="xs" color="gray.600" mt={3}>{s.importInfo}</Text>}
       </Section>
 
       <Section title="Modelo paramétrico">
