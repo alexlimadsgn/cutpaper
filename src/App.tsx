@@ -1,6 +1,6 @@
 import { Box, Button, Flex, Group, Heading, IconButton, Text } from '@chakra-ui/react';
 import {
-  Box as BoxIcon, Download, FoldVertical, ImagePlus, Map as MapIcon, Minimize2, MousePointer2, Redo2, Scissors, Undo2, Upload,
+  Box as BoxIcon, Circle, Download, Square, Type, FoldVertical, ImagePlus, Map as MapIcon, Minimize2, MousePointer2, Redo2, Scissors, Undo2, Upload,
 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { ArtProps } from './components/ArtProps';
@@ -8,8 +8,8 @@ import { Editor2D } from './components/Editor2D';
 import { LayersPanel } from './components/LayersPanel';
 import { Preview3D } from './components/Preview3D';
 import { StructureProps } from './components/StructureProps';
-import { pickImage } from './components/ui';
 import { VerifyProps } from './components/VerifyProps';
+import { insertImageObject } from './art/insertImage';
 import { buildSvg, download } from './export/svg';
 import { openSvgFile } from './io/openSvg';
 import { useStore, type Mode } from './store';
@@ -45,7 +45,7 @@ function TopBar() {
   const s = useStore();
   const { dieline } = useDieline();
   const exportSvg = () =>
-    download(`cutpaper-${Date.now().toString(36)}.svg`, buildSvg({ ...s, dieline }));
+    download(`cutpaper-${Date.now().toString(36)}.svg`, buildSvg({ ...s, objects: s.doc.objects, dieline }));
 
   return (
     <Flex h="56px" flexShrink={0} align="center" px={4} gap={4} bg="white" borderBottomWidth="1px" borderColor="gray.200">
@@ -119,12 +119,10 @@ function ToolRail() {
       )}
       {s.mode === 'art' && (
         <>
-          <RailButton
-            label={s.sel.face ? 'Imagem na face selecionada' : 'Imagem de fundo do molde'}
-            onClick={() => pickImage((u) => (s.sel.face ? s.setFaceImage(s.sel.face, u) : s.setFullImage(u)))}
-          >
-            <ImagePlus size={18} />
-          </RailButton>
+          <RailButton label="Retângulo (R)" active={s.tool === 'rect'} onClick={() => s.setTool('rect')}><Square size={18} /></RailButton>
+          <RailButton label="Elipse (E)" active={s.tool === 'ellipse'} onClick={() => s.setTool('ellipse')}><Circle size={18} /></RailButton>
+          <RailButton label="Texto (T)" active={s.tool === 'text'} onClick={() => s.setTool('text')}><Type size={18} /></RailButton>
+          <RailButton label={s.sel.face ? 'Imagem (na face selecionada)' : 'Imagem'} onClick={insertImageObject}><ImagePlus size={18} /></RailButton>
         </>
       )}
     </Flex>
@@ -141,7 +139,7 @@ function CanvasArea() {
     <Box flex={1} minW={0} position="relative" bg="gray.50">
       {main3D ? <Box position="absolute" inset={0}><Preview3D /></Box> : <Editor2D />}
       {miniOpen ? (
-        <Box position="absolute" top={3} right={3} w="300px" h="230px" bg="white" borderRadius="lg" shadow="lg" borderWidth="1px" borderColor="gray.200" overflow="hidden">
+        <Box position="absolute" top={3} right={3} w="min(300px, 32%)" h="min(230px, 30%)" minW="160px" minH="120px" bg="white" borderRadius="lg" shadow="lg" borderWidth="1px" borderColor="gray.200" overflow="hidden">
           <Flex position="absolute" top={0} left={0} right={0} zIndex={1} justify="space-between" align="center" px={2} py={1} bg="whiteAlpha.800">
             <Text fontSize="xs" fontWeight="600" color="gray.600">{main3D ? 'Planificação' : 'Montagem 3D'}</Text>
             <IconButton size="2xs" variant="ghost" aria-label="Minimizar" onClick={() => setMiniOpen(false)}><Minimize2 size={12} /></IconButton>

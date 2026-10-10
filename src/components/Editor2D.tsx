@@ -1,6 +1,8 @@
 import { Box, Button, Group, IconButton, Text } from '@chakra-ui/react';
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from 'react';
-import { buildArt, COLORS } from '../export/svg';
+import { center, createObject, objectToSvg, toLocal, toWorld, type ArtObject, type ArtType } from '../art/objects';
+import { buildArt, COLORS, objectClip } from '../export/svg';
+import { faceAt } from '../geometry/faces';
 import {
   addSegments, deleteEdges, deleteVertices, moveVertices, normalize, splitEdge, type Graph,
 } from '../geometry/graph';
@@ -14,7 +16,11 @@ interface View { cx: number; cy: number; scale: number } // scale = px por mm
 type Interaction =
   | { kind: 'drag'; ids: string[]; anchor: string; start: Vec2; base: Graph; moved: boolean }
   | { kind: 'pan'; client: Vec2; view: View }
-  | { kind: 'marquee'; start: Vec2; cur: Vec2; additive: boolean; face?: string; moved: boolean };
+  | { kind: 'marquee'; start: Vec2; cur: Vec2; additive: boolean; face?: string; moved: boolean }
+  | { kind: 'obj-move'; base: ArtObject; start: Vec2; moved: boolean }
+  | { kind: 'obj-resize'; base: ArtObject; hx: number; hy: number; moved: boolean }
+  | { kind: 'obj-rotate'; base: ArtObject; moved: boolean }
+  | { kind: 'obj-create'; type: ArtType; start: Vec2; cur: Vec2; face?: string };
 
 interface Snap { p: Vec2; kind: 'vertex' | 'edge' | 'grid' | 'free'; vid?: string }
 
@@ -24,9 +30,12 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
   const { dieline, material, bleedPolys, conflicts, viewBox: fitBox } = useDieline();
   const bad = new Set(conflicts.map((c) => c.face));
   const s = useStore();
-  const { graph } = s.doc;
+  const { graph, objects } = s.doc;
   // fora do modo Estrutura (ou na miniatura) o molde fica travado: só faces são clicáveis
   const editable = s.mode === 'structure' && !compact;
+  const artMode = s.mode === 'art' && !compact;
+  const isLineTool = s.tool === 'cut' || s.tool === 'crease';
+  const selObj = objects.find((o) => o.id === s.sel.object);
   const wrapRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -34,6 +43,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
   const act = useRef<Interaction | null>(null);
   const [marquee, setMarquee] = useState<[Vec2, Vec2] | null>(null);
   const [draw, setDraw] = useState<{ start: Vec2 | null; hover: Snap | null }>({ start: null, hover: null });
+  const [creating, setCreating] = useState<{ type: ArtType; a: Vec2; b: Vec2 } | null>(null);
   const [space, setSpace] = useState(false);
 
   // ---------- viewport ----------
@@ -115,6 +125,50 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
     return [from[0] + Math.cos(ang) * len, from[1] + Math.sin(ang) * len];
   };
 
+  /** Snap do objeto: centro e bordas das faces, senão grade. */
+  const snapObject = (o: ArtObject): Vec2 => {
+    const r = 6 * px;
+    const [cx, cy] = center(o);
+    let bx: number | undefined, by: number | undefined, dx = r, dy = r;
+    for (const f of dieline.faces) {
+      const xs = f.poly.map((q) => q[0]), ys = f.poly.map((q) => q[1]);
+      const fx = [Math.min(...xs), (Math.min(...xs) + Math.max(...xs)) / 2, Math.max(...xs)];
+      const fy = [Math.min(...ys), (Math.min(...ys) + Math.max(...ys)) / 2, Math.max(...ys)];
+      // alinha centro, borda esquerda/superior ou direita/inferior do objeto
+      for (const t of fx)
+        for (const [val, off] of [[cx, 0], [o.x, o.w / 2], [o.x + o.w, -o.w / 2]])
+          if (Math.abs(val - t) < dx) { dx = Math.abs(val - t); bx = t + off; }
+      for (const t of fy)
+        for (const [val, off] of [[cy, 0], [o.y, o.h / 2], [o.y + o.h, -o.h / 2]])
+          if (Math.abs(val - t) < dy) { dy = Math.abs(val - t); by = t + off; }
+    }
+    const g = snapGrid([o.x, o.y]);
+    return [bx !== undefined ? bx - o.w / 2 : g[0], by !== undefined ? by - o.h / 2 : g[1]];
+  };
+
+  /** Redimensiona pela alça (hx, hy ∈ {-1,0,1}) no referencial do objeto (respeita rotação). */
+  const resizeBox = (o: ArtObject, hx: number, hy: number, p: Vec2, shift: boolean): Partial<ArtObject> => {
+    const l = toLocal(o, p);
+    let left = -o.w / 2, right = o.w / 2, top = -o.h / 2, bottom = o.h / 2;
+    if (hx === 1) right = Math.max(left + 1, l[0]);
+    if (hx === -1) left = Math.min(right - 1, l[0]);
+    if (hy === 1) bottom = Math.max(top + 1, l[1]);
+    if (hy === -1) top = Math.min(bottom - 1, l[1]);
+    let w = right - left, h = bottom - top;
+    // imagem e texto mantêm a proporção (Shift inverte); texto sempre proporcional
+    const keep = o.type === 'text' || ((o.type === 'image') !== shift && hx !== 0 && hy !== 0);
+    if (keep) {
+      const k = hx === 0 ? h / o.h : hy === 0 ? w / o.w : Math.max(w / o.w, h / o.h);
+      w = o.w * k; h = o.h * k;
+      if (hx === -1) left = right - w; else if (hx === 1) right = left + w; else { left = -w / 2; right = w / 2; }
+      if (hy === -1) top = bottom - h; else if (hy === 1) bottom = top + h; else { top = -h / 2; bottom = h / 2; }
+    }
+    const [cx, cy] = toWorld(o, [(left + right) / 2, (top + bottom) / 2]);
+    const patch: Partial<ArtObject> = { x: cx - w / 2, y: cy - h / 2, w, h };
+    if (o.type === 'text') patch.fontSize = +((o.fontSize ?? 12) * (h / o.h)).toFixed(2);
+    return patch;
+  };
+
   // ---------- ponteiro ----------
   const onPointerDown = (e: RPointerEvent<SVGSVGElement>) => {
     svgRef.current!.setPointerCapture(e.pointerId);
@@ -125,13 +179,23 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
     }
     if (e.button !== 0) return;
 
-    if (s.tool !== 'select') {
+    if (artMode && (s.tool === 'rect' || s.tool === 'ellipse')) {
+      const start = snapGrid(p);
+      act.current = { kind: 'obj-create', type: s.tool, start, cur: start, face: faceAt(dieline, p)?.id };
+      return;
+    }
+    if (artMode && s.tool === 'text') {
+      s.addObject(createObject('text', { x: p[0], y: p[1], w: 0, h: 0 }, { clip: faceAt(dieline, p)?.id }));
+      return;
+    }
+
+    if (isLineTool) {
       const snap = snapPoint(p);
       let pt = snap.p;
       if (draw.start && e.shiftKey && snap.kind !== 'vertex') pt = constrain(draw.start, p);
       if (!draw.start) return setDraw({ start: pt, hover: snap });
       if (Math.hypot(pt[0] - draw.start[0], pt[1] - draw.start[1]) > 0.01)
-        s.commit({ graph: addSegments(graph, [{ a: draw.start, b: pt, type: s.tool }]) });
+        s.commit({ graph: addSegments(graph, [{ a: draw.start, b: pt, type: s.tool as 'cut' | 'crease' }]) });
       // fechar sobre um vértice existente encerra a linha
       setDraw({ start: snap.kind === 'vertex' ? null : pt, hover: snap });
       return;
@@ -140,6 +204,27 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
     const target = e.target as Element;
     const kind = target.getAttribute('data-kind');
     const id = target.getAttribute('data-id') ?? undefined;
+
+    if (artMode) {
+      if (kind === 'obj-handle' && selObj) {
+        const [hx, hy] = target.getAttribute('data-h')!.split(',').map(Number);
+        act.current = { kind: 'obj-resize', base: selObj, hx, hy, moved: false };
+        s.beginDrag();
+        return;
+      }
+      if (kind === 'obj-rot' && selObj) {
+        act.current = { kind: 'obj-rotate', base: selObj, moved: false };
+        s.beginDrag();
+        return;
+      }
+      if (kind === 'object' && id) {
+        const o = objects.find((x) => x.id === id)!;
+        s.select({ object: id, face: o.clip });
+        act.current = { kind: 'obj-move', base: o, start: p, moved: false };
+        s.beginDrag();
+        return;
+      }
+    }
 
     if (kind === 'vertex' && id) {
       let verts = s.sel.vertices;
@@ -183,7 +268,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
     const p = toMM(e.clientX, e.clientY);
     const a = act.current;
     if (!a) {
-      if (s.tool !== 'select') {
+      if (isLineTool) {
         const snap = snapPoint(p);
         if (draw.start && e.shiftKey && snap.kind !== 'vertex') snap.p = constrain(draw.start, p);
         setDraw((d) => ({ ...d, hover: snap }));
@@ -196,6 +281,27 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
       a.cur = p;
       a.moved ||= Math.hypot(p[0] - a.start[0], p[1] - a.start[1]) > 3 * px;
       if (a.moved) setMarquee([a.start, p]);
+    } else if (a.kind === 'obj-create') {
+      a.cur = snapGrid(p);
+      setCreating({ type: a.type, a: a.start, b: a.cur });
+    } else if (a.kind === 'obj-move') {
+      let nx = a.base.x + p[0] - a.start[0], ny = a.base.y + p[1] - a.start[1];
+      if (e.shiftKey) {
+        if (Math.abs(nx - a.base.x) > Math.abs(ny - a.base.y)) ny = a.base.y;
+        else nx = a.base.x;
+      } else [nx, ny] = snapObject({ ...a.base, x: nx, y: ny });
+      a.moved ||= Math.hypot(nx - a.base.x, ny - a.base.y) > 1e-6;
+      s.setObjectLive(a.base.id, { x: nx, y: ny });
+    } else if (a.kind === 'obj-resize') {
+      a.moved = true;
+      s.setObjectLive(a.base.id, resizeBox(a.base, a.hx, a.hy, p, e.shiftKey));
+    } else if (a.kind === 'obj-rotate') {
+      const [cx, cy] = center(a.base);
+      let deg = (Math.atan2(p[1] - cy, p[0] - cx) * 180) / Math.PI + 90;
+      if (e.shiftKey) deg = Math.round(deg / 15) * 15;
+      deg = ((deg % 360) + 360) % 360;
+      a.moved = true;
+      s.setObjectLive(a.base.id, { rotation: +deg.toFixed(2) });
     } else if (a.kind === 'drag') {
       const base = a.base.v[a.anchor];
       let target: Vec2 = [base.x + p[0] - a.start[0], base.y + p[1] - a.start[1]];
@@ -226,7 +332,16 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
     const a = act.current;
     act.current = null;
     if (!a) return;
-    if (a.kind === 'drag') s.endDrag(a.moved);
+    if (a.kind === 'drag' || a.kind === 'obj-move' || a.kind === 'obj-resize' || a.kind === 'obj-rotate') s.endDrag(a.moved);
+    if (a.kind === 'obj-create') {
+      setCreating(null);
+      const w = Math.abs(a.cur[0] - a.start[0]), h = Math.abs(a.cur[1] - a.start[1]);
+      // clique simples cria um tamanho padrão centrado no ponto
+      const box = w < 1 || h < 1
+        ? { x: a.start[0] - 15, y: a.start[1] - 10, w: 30, h: 20 }
+        : { x: Math.min(a.start[0], a.cur[0]), y: Math.min(a.start[1], a.cur[1]), w, h };
+      s.addObject(createObject(a.type, box, { clip: a.face }));
+    }
     if (a.kind === 'marquee') {
       setMarquee(null);
       if (!a.moved || !editable) return s.select(a.face ? { face: a.face } : {});
@@ -245,7 +360,14 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
   };
 
   const onDoubleClick = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (s.tool !== 'select') return setDraw({ start: null, hover: null });
+    if (artMode) {
+      // duplo clique num texto leva o foco para o campo de conteúdo no painel
+      if ((e.target as Element).getAttribute('data-kind') === 'object')
+        setTimeout(() => (document.getElementById('art-text-input') as HTMLTextAreaElement | null)?.focus(), 0);
+      return;
+    }
+    if (!editable) return;
+    if (isLineTool) return setDraw({ start: null, hover: null });
     const target = e.target as Element;
     if (target.getAttribute('data-kind') !== 'edge') return;
     const { g, vid } = splitEdge(graph, target.getAttribute('data-id')!, toMM(e.clientX, e.clientY));
@@ -265,6 +387,33 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
       if (e.type !== 'keydown') return;
       if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); return e.shiftKey ? st.redo() : st.undo(); }
       if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); return st.redo(); }
+      if (compact) return; // a miniatura só responde a desfazer/refazer
+
+      if (st.mode === 'art') {
+        const o = st.doc.objects.find((x) => x.id === st.sel.object);
+        if (mod && e.key.toLowerCase() === 'd' && o) { e.preventDefault(); return st.duplicateObject(o.id); }
+        if (mod) return;
+        switch (e.key) {
+          case 'Escape': st.select({}); st.setTool('select'); return;
+          case 'Delete': case 'Backspace': if (o) st.deleteObject(o.id); return;
+          case 'v': case 'V': return st.setTool('select');
+          case 'r': case 'R': return st.setTool('rect');
+          case 'e': case 'E': return st.setTool('ellipse');
+          case 't': case 'T': return st.setTool('text');
+          case 'ArrowLeft': case 'ArrowRight': case 'ArrowUp': case 'ArrowDown': {
+            if (!o) return;
+            e.preventDefault();
+            const step = e.shiftKey ? 1 : 0.1;
+            st.updateObject(o.id, {
+              x: o.x + (e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0),
+              y: o.y + (e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0),
+            });
+            return;
+          }
+        }
+        return;
+      }
+
       if (mod && e.key.toLowerCase() === 'a' && st.mode === 'structure') {
         e.preventDefault();
         return st.select({ vertices: Object.keys(g.v), edges: Object.keys(g.e) });
@@ -308,11 +457,11 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
     window.addEventListener('keydown', onKey);
     window.addEventListener('keyup', onKey);
     return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); };
-  }, []);
+  }, [compact]);
 
-  useEffect(() => { if (s.tool === 'select') setDraw({ start: null, hover: null }); }, [s.tool]);
+  useEffect(() => { if (!isLineTool) setDraw({ start: null, hover: null }); }, [isLineTool]);
 
-  // ---------- arte (congelada durante o arrasto para não recarregar imagens a cada frame) ----------
+  // ---------- arte de fundo (congelada durante o arrasto para não recarregar imagens a cada frame) ----------
   const frozen = useRef({ dieline, bleedPolys });
   if (!s.dragging) frozen.current = { dieline, bleedPolys };
   const art = useMemo(
@@ -342,7 +491,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
     });
   }, [graph, v.scale]);
   const gridStep = s.grid > 0 ? [1, 5, 10, 50, 100].map((k) => k * s.grid).find((g) => g * v.scale >= 10) : undefined;
-  const cursor = space ? 'grab' : s.tool !== 'select' ? 'crosshair' : 'default';
+  const cursor = space ? 'grab' : s.tool === 'text' ? 'text' : s.tool !== 'select' ? 'crosshair' : 'default';
 
   return (
     <Box ref={wrapRef} position="absolute" inset={0} overflow="hidden" bg="gray.50">
@@ -379,6 +528,11 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
 
         <path d={polyToPath(material)} fill="white" fillRule="evenodd" pointerEvents="none" />
         {s.layers.artwork && <g pointerEvents="none" dangerouslySetInnerHTML={{ __html: art.body }} />}
+        {/* objetos: um <g> por objeto, assim só o que mudou é redesenhado */}
+        {s.layers.artwork &&
+          objects.map((o) => (
+            <g key={o.id} pointerEvents="none" clipPath={`url(#${objectClip('ed', dieline, o)})`} dangerouslySetInnerHTML={{ __html: objectToSvg(o) }} />
+          ))}
         {s.layers.bleed && s.bleed > 0 && (
           <path d={polyToPath(bleedPolys)} fill="none" stroke={COLORS.bleed} strokeWidth={1} strokeDasharray="4 3" vectorEffect="non-scaling-stroke" pointerEvents="none" />
         )}
@@ -391,7 +545,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
             d={polyToPath([f.poly, ...f.holes])}
             fillRule="evenodd"
             fill={bad.has(f.id) ? 'url(#ed-bad)' : s.sel.face === f.id && s.mode === 'structure' ? 'rgba(229,38,46,0.12)' : 'transparent'}
-            stroke={s.sel.face === f.id ? '#F59E0B' : 'none'}
+            stroke={s.sel.face === f.id && !selObj ? '#F59E0B' : 'none'}
             strokeWidth={s.mode === 'structure' ? 2 : 3}
             vectorEffect="non-scaling-stroke"
           >
@@ -399,15 +553,29 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
           </path>
         ))}
 
+        {artMode && s.tool === 'select' &&
+          objects.filter((o) => !o.hidden).map((o) => {
+            const [cx, cy] = center(o);
+            return (
+              <rect
+                key={o.id} data-kind="object" data-id={o.id}
+                x={o.x} y={o.y} width={o.w} height={o.h}
+                transform={`rotate(${o.rotation} ${cx} ${cy})`}
+                fill="transparent" style={{ cursor: 'move' }}
+              >
+                <title>{o.name}</title>
+              </rect>
+            );
+          })}
+
         {Object.entries(graph.e).map(([id, e]) => {
           const A = graph.v[e.a], B = graph.v[e.b];
           const visible = e.type === 'cut' ? s.layers.cut : s.layers.crease;
           const selected = selE.has(id);
           return (
-            <g key={id} className="edge">
+            <g key={id}>
               <line
                 x1={A.x} y1={A.y} x2={B.x} y2={B.y}
-                className="vis"
                 stroke={selected ? '#F59E0B' : e.type === 'cut' ? COLORS.cut : COLORS.crease}
                 strokeWidth={selected ? 2.5 : 1.25}
                 strokeDasharray={e.type === 'crease' ? '6 4' : undefined}
@@ -441,6 +609,40 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
             );
           })}
 
+        {/* caixa de seleção do objeto: 8 alças de tamanho + alça de rotação */}
+        {artMode && selObj && (() => {
+          const [cx, cy] = center(selObj);
+          const hs = 4 * px;
+          const rotY = selObj.y - 18 * px;
+          return (
+            <g transform={`rotate(${selObj.rotation} ${cx} ${cy})`}>
+              <rect x={selObj.x} y={selObj.y} width={selObj.w} height={selObj.h} fill="none" stroke="#F59E0B" strokeWidth={1.5} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+              <line x1={cx} y1={selObj.y} x2={cx} y2={rotY} stroke="#F59E0B" strokeWidth={1} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+              <circle data-kind="obj-rot" cx={cx} cy={rotY} r={5 * px} fill="white" stroke="#F59E0B" strokeWidth={1.5} vectorEffect="non-scaling-stroke" style={{ cursor: 'grab' }} />
+              {[-1, 0, 1].flatMap((hy) => [-1, 0, 1].map((hx) => {
+                if (!hx && !hy) return null;
+                const x = cx + (hx * selObj.w) / 2, y = cy + (hy * selObj.h) / 2;
+                return (
+                  <rect
+                    key={`${hx},${hy}`} data-kind="obj-handle" data-h={`${hx},${hy}`}
+                    x={x - hs} y={y - hs} width={hs * 2} height={hs * 2}
+                    fill="white" stroke="#B45309" strokeWidth={1} vectorEffect="non-scaling-stroke"
+                    style={{ cursor: hx && hy ? (hx === hy ? 'nwse-resize' : 'nesw-resize') : hx ? 'ew-resize' : 'ns-resize' }}
+                  />
+                );
+              }))}
+            </g>
+          );
+        })()}
+        {creating && (() => {
+          const x = Math.min(creating.a[0], creating.b[0]), y = Math.min(creating.a[1], creating.b[1]);
+          const w = Math.abs(creating.b[0] - creating.a[0]), h = Math.abs(creating.b[1] - creating.a[1]);
+          const st = { fill: 'rgba(245,158,11,0.25)', stroke: '#F59E0B', strokeWidth: 1.5, vectorEffect: 'non-scaling-stroke' as const, pointerEvents: 'none' as const };
+          return creating.type === 'ellipse'
+            ? <ellipse cx={x + w / 2} cy={y + h / 2} rx={w / 2} ry={h / 2} {...st} />
+            : <rect x={x} y={y} width={w} height={h} {...st} />;
+        })()}
+
         {draw.start && draw.hover && (
           <line
             x1={draw.start[0]} y1={draw.start[1]} x2={draw.hover.p[0]} y2={draw.hover.p[1]}
@@ -451,7 +653,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
             pointerEvents="none"
           />
         )}
-        {s.tool !== 'select' && draw.hover && (
+        {isLineTool && draw.hover && (
           <circle
             cx={draw.hover.p[0]} cy={draw.hover.p[1]} r={(draw.hover.kind === 'vertex' ? 6 : 4) * px}
             fill="none" stroke={draw.hover.kind === 'vertex' ? '#F59E0B' : draw.hover.kind === 'edge' ? '#8B5CF6' : '#64748B'}
@@ -467,9 +669,14 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
         )}
       </svg>
 
-      {editable && s.tool !== 'select' && (
+      {editable && isLineTool && (
         <Text position="absolute" top={3} left="50%" transform="translateX(-50%)" fontSize="xs" bg="white" px={3} py={1} borderRadius="full" shadow="sm" color="gray.600">
           Clique para desenhar {s.tool === 'cut' ? 'corte' : 'vinco'} · Shift = 45° · Esc/duplo clique encerra
+        </Text>
+      )}
+      {artMode && s.tool !== 'select' && (
+        <Text position="absolute" top={3} left="50%" transform="translateX(-50%)" fontSize="xs" bg="white" px={3} py={1} borderRadius="full" shadow="sm" color="gray.600">
+          {s.tool === 'text' ? 'Clique para inserir um texto' : `Arraste para desenhar ${s.tool === 'rect' ? 'um retângulo' : 'uma elipse'} (clique = tamanho padrão)`} · fica recortado na face onde começar
         </Text>
       )}
 

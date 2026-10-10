@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { normalize, type Graph } from './geometry/graph';
 import { TEMPLATES, type TemplateId } from './geometry/templates';
 import type { BoxParams } from './geometry/types';
+import { fitText, newObjectId, type ArtObject } from './art/objects';
 
 export interface Layers {
   bleed: boolean;
@@ -17,9 +18,11 @@ export interface Doc {
   names: Record<string, string>;
   /** Face base da dobra 3D. */
   root?: string;
+  /** Objetos de arte, em ordem de empilhamento (o último fica por cima). */
+  objects: ArtObject[];
 }
 
-export type Tool = 'select' | 'cut' | 'crease';
+export type Tool = 'select' | 'cut' | 'crease' | 'rect' | 'ellipse' | 'text';
 
 /** Modo de trabalho: desenhar o molde, decorar, ou conferir a montagem. */
 export type Mode = 'structure' | 'art' | 'verify';
@@ -28,6 +31,7 @@ export interface Selection {
   vertices: string[];
   edges: string[];
   face?: string;
+  object?: string;
 }
 
 const EMPTY_SEL: Selection = { vertices: [], edges: [] };
@@ -80,6 +84,15 @@ interface State {
   setMode: (m: Mode) => void;
   setBgColor: (c?: string) => void;
   setFaceColor: (id: string, c?: string) => void;
+
+  addObject: (o: ArtObject) => void;
+  /** Altera um objeto e grava no histórico. */
+  updateObject: (id: string, patch: Partial<ArtObject>) => void;
+  /** Altera um objeto ao vivo (durante arrasto), sem histórico. */
+  setObjectLive: (id: string, patch: Partial<ArtObject>) => void;
+  deleteObject: (id: string) => void;
+  duplicateObject: (id: string) => void;
+  reorderObject: (id: string, to: 'up' | 'down' | 'front' | 'back') => void;
   select: (sel: Partial<Selection>) => void;
   setGrid: (v: number) => void;
   reset: () => void;
@@ -87,15 +100,22 @@ interface State {
 
 const DEFAULT_PARAMS: BoxParams = { width: 100, depth: 80, height: 40, tuck: 15, glue: 20, thickness: 0.5 };
 
-const fromTemplate = (id: TemplateId, p: BoxParams): Doc => {
+const fromTemplate = (id: TemplateId, p: BoxParams): Omit<Doc, 'objects'> => {
   const { graph, names, root } = TEMPLATES[id].build(p);
   return { graph, names, root };
+};
+
+/** Texto muda de tamanho junto com conteúdo/fonte. */
+const TEXT_KEYS: (keyof ArtObject)[] = ['text', 'font', 'fontSize', 'bold', 'italic'];
+const applyPatch = (o: ArtObject, patch: Partial<ArtObject>) => {
+  const next = { ...o, ...patch };
+  return o.type === 'text' && TEXT_KEYS.some((k) => k in patch) ? fitText(next) : next;
 };
 
 let dragSnapshot: Doc | undefined;
 
 export const useStore = create<State>((set, get) => ({
-  doc: fromTemplate('lidBox', DEFAULT_PARAMS),
+  doc: { ...fromTemplate('lidBox', DEFAULT_PARAMS), objects: [] },
   past: [],
   future: [],
   source: 'template',
@@ -128,7 +148,9 @@ export const useStore = create<State>((set, get) => ({
   endDrag: (moved) => {
     const before = dragSnapshot;
     dragSnapshot = undefined;
-    if (!moved || !before) return set({ dragging: false });
+    const cur = get().doc;
+    const unchanged = before && before.graph === cur.graph && before.objects === cur.objects;
+    if (!moved || !before || unchanged) return set({ dragging: false });
     // ao soltar, resolve cruzamentos/fusões criados pelo movimento
     set((s) => ({
       dragging: false,
@@ -179,10 +201,41 @@ export const useStore = create<State>((set, get) => ({
     set((s) => ({
       mode,
       // fora do modo Estrutura o molde fica travado: só faces podem ser selecionadas
-      tool: mode === 'structure' ? s.tool : 'select',
-      sel: mode === 'structure' ? s.sel : { ...EMPTY_SEL, face: s.sel.face },
+      tool: 'select',
+      sel: mode === 'structure' ? { ...EMPTY_SEL, face: s.sel.face } : { ...EMPTY_SEL, face: s.sel.face, object: s.sel.object },
     })),
   setBgColor: (bgColor) => set({ bgColor }),
+
+  addObject: (o) => {
+    get().commit({ objects: [...get().doc.objects, o] });
+    set({ sel: { ...EMPTY_SEL, object: o.id }, tool: 'select' });
+  },
+  updateObject: (id, patch) =>
+    get().commit({ objects: get().doc.objects.map((o) => (o.id === id ? applyPatch(o, patch) : o)) }),
+  setObjectLive: (id, patch) =>
+    set((s) => ({ doc: { ...s.doc, objects: s.doc.objects.map((o) => (o.id === id ? applyPatch(o, patch) : o)) } })),
+  deleteObject: (id) => {
+    get().commit({ objects: get().doc.objects.filter((o) => o.id !== id) });
+    set({ sel: EMPTY_SEL });
+  },
+  duplicateObject: (id) => {
+    const o = get().doc.objects.find((x) => x.id === id);
+    if (!o) return;
+    const copy = { ...o, id: newObjectId(), name: `${o.name} (cópia)`, x: o.x + 3, y: o.y + 3 };
+    const list = [...get().doc.objects];
+    list.splice(list.indexOf(o) + 1, 0, copy);
+    get().commit({ objects: list });
+    set({ sel: { ...EMPTY_SEL, object: copy.id } });
+  },
+  reorderObject: (id, to) => {
+    const list = [...get().doc.objects];
+    const i = list.findIndex((o) => o.id === id);
+    if (i < 0) return;
+    const [o] = list.splice(i, 1);
+    const j = to === 'front' ? list.length : to === 'back' ? 0 : to === 'up' ? Math.min(list.length, i + 1) : Math.max(0, i - 1);
+    list.splice(j, 0, o);
+    get().commit({ objects: list });
+  },
   setFaceColor: (id, c) =>
     set((s) => {
       const faceColors = { ...s.faceColors };
@@ -195,6 +248,7 @@ export const useStore = create<State>((set, get) => ({
   reset: () => {
     set({ params: DEFAULT_PARAMS, bleed: 3, fullImage: undefined, faceImages: {}, faceColors: {}, bgColor: undefined, sel: EMPTY_SEL, template: 'lidBox' });
     get().regenerate();
+    get().commit({ objects: [] }, 'template');
   },
 }));
 

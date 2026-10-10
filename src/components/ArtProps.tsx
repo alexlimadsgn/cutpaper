@@ -2,6 +2,7 @@ import { Box, Button, Flex, Image, Input, Stack, Text } from '@chakra-ui/react';
 import { useStore } from '../store';
 import { useDieline } from '../useDieline';
 import { ColorField } from './ColorField';
+import { ObjectProps } from './ObjectProps';
 import { Section, pickImage } from './ui';
 
 /** Propriedades do modo Arte: fundo da face selecionada ou do molde inteiro. */
@@ -9,6 +10,8 @@ export function ArtProps() {
   const s = useStore();
   const { dieline } = useDieline();
   const face = dieline.faces.find((f) => f.id === s.sel.face);
+  const obj = s.doc.objects.find((o) => o.id === s.sel.object);
+  if (obj) return <ObjectProps o={obj} />;
 
   if (face)
     return (

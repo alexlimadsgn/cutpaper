@@ -14,12 +14,13 @@ const MM = 0.01; // 100 mm = 1 unidade
 function useArtTexture() {
   const { dieline, viewBox } = useDieline();
   const { bleed, fullImage, faceImages, faceColors, bgColor, dragging } = useStore();
+  const objects = useStore((s) => s.doc.objects);
   const [texture, setTexture] = useState<THREE.Texture>();
 
   useEffect(() => {
     if (dragging) return; // a textura é refeita ao soltar
     const svg = buildSvg({
-      dieline, bleed, fullImage, faceImages, faceColors, bgColor, background: '#ffffff',
+      dieline, bleed, fullImage, faceImages, faceColors, bgColor, objects, background: '#ffffff',
       layers: { artwork: true, bleed: false, cut: false, crease: false },
     });
     const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
@@ -40,7 +41,7 @@ function useArtTexture() {
     };
     img.src = url;
     return () => { cancelled = true; };
-  }, [dieline, bleed, fullImage, faceImages, faceColors, bgColor, viewBox, dragging]);
+  }, [dieline, bleed, fullImage, faceImages, faceColors, bgColor, objects, viewBox, dragging]);
 
   return texture;
 }

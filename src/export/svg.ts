@@ -1,4 +1,5 @@
 import { bleedOutline, bounds, materialOutline, polyToPath } from '../geometry/outline';
+import { objectToSvg, type ArtObject } from '../art/objects';
 import type { Dieline, Vec2 } from '../geometry/types';
 import type { Layers } from '../store';
 
@@ -12,6 +13,7 @@ export interface SvgInput {
   faceImages: Record<string, string>;
   faceColors?: Record<string, string>;
   bgColor?: string;
+  objects?: ArtObject[];
   /** Fundo atrás da arte (usado na textura 3D). */
   background?: string;
 }
@@ -34,11 +36,23 @@ export interface ArtInput {
   faceImages: Record<string, string>;
   faceColors?: Record<string, string>;
   bgColor?: string;
+  /** Objetos de arte; o editor os desenha à parte (interativos) e não os passa aqui. */
+  objects?: ArtObject[];
 }
 
+/** Id do clipPath de uma face (todas as faces recebem um, para recortar imagens e objetos). */
+export const faceClipId = (prefix: string, d: Dieline, faceId: string) => `${prefix}-f${d.faces.findIndex((f) => f.id === faceId)}`;
+
+/** Recorte de um objeto: a face escolhida ou o molde inteiro (sangria). */
+export const objectClip = (prefix: string, d: Dieline, o: ArtObject) =>
+  o.clip && d.faces.some((f) => f.id === o.clip) ? faceClipId(prefix, d, o.clip) : `${prefix}-bleed`;
+
 export function buildArt(dieline: Dieline, bleedPolys: Vec2[][], art: ArtInput, prefix = 'cp') {
-  const { fullImage, faceImages, faceColors = {}, bgColor } = art;
+  const { fullImage, faceImages, faceColors = {}, bgColor, objects = [] } = art;
   const defs: string[] = [`<clipPath id="${prefix}-bleed"><path clip-rule="evenodd" d="${polyToPath(bleedPolys)}"/></clipPath>`];
+  dieline.faces.forEach((f, i) =>
+    defs.push(`<clipPath id="${prefix}-f${i}"><path clip-rule="evenodd" d="${polyToPath([f.poly, ...f.holes])}"/></clipPath>`),
+  );
   const body: string[] = [];
   // ordem de pintura: cor de fundo → imagem inteira → cor da face → imagem da face
   if (bgColor) body.push(`<path fill-rule="evenodd" fill="${esc(bgColor)}" d="${polyToPath(bleedPolys)}"/>`);
@@ -56,11 +70,14 @@ export function buildArt(dieline: Dieline, bleedPolys: Vec2[][], art: ArtInput, 
     const img = faceImages[f.id];
     if (!img) return;
     const fb = bounds([f.poly]);
-    defs.push(`<clipPath id="${prefix}-f${i}"><path clip-rule="evenodd" d="${polyToPath([f.poly, ...f.holes])}"/></clipPath>`);
     body.push(
       `<g clip-path="url(#${prefix}-f${i})"><image href="${esc(img)}" x="${fb.minX}" y="${fb.minY}" width="${fb.w}" height="${fb.h}" preserveAspectRatio="xMidYMid slice"/></g>`,
     );
   });
+  for (const o of objects) {
+    const markup = objectToSvg(o);
+    if (markup) body.push(`<g clip-path="url(#${objectClip(prefix, dieline, o)})">${markup}</g>`);
+  }
   return { defs: defs.join(''), body: body.join('') };
 }
 
@@ -68,11 +85,11 @@ export function buildArt(dieline: Dieline, bleedPolys: Vec2[][], art: ArtInput, 
  * Gera o SVG 1:1 em milímetros com camadas nomeadas
  * (ARTE, SANGRIA, CORTE, VINCO) — compatível com Illustrator/Inkscape/Silhouette.
  */
-export function buildSvg({ dieline, bleed, layers, fullImage, faceImages, faceColors, bgColor, background }: SvgInput): string {
+export function buildSvg({ dieline, bleed, layers, fullImage, faceImages, faceColors, bgColor, objects, background }: SvgInput): string {
   const material = materialOutline(dieline);
   const bl = bleedOutline(material, bleed);
   const vb = viewBoxOf(bl.length ? bl : material);
-  const art = buildArt(dieline, bl, { fullImage, faceImages, faceColors, bgColor }, 'x');
+  const art = buildArt(dieline, bl, { fullImage, faceImages, faceColors, bgColor, objects }, 'x');
   const out: string[] = [];
   out.push(
     `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="${vb[2]}mm" height="${vb[3]}mm" viewBox="${vb.join(' ')}">`,
