@@ -54,6 +54,15 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
   const [dragGuides, setDragGuides] = useState<[Vec2, Vec2][]>([]);
   /** Cota em edição: aresta e texto digitado. */
   const [editDim, setEditDim] = useState<{ id: string; value: string } | null>(null);
+  const dimInput = useRef<HTMLInputElement>(null);
+  const dimOpenedAt = useRef(0);
+  // foca o campo depois que ele aparece (e de o clique terminar)
+  useEffect(() => {
+    if (!editDim) return;
+    const t = setTimeout(() => { dimInput.current?.focus(); dimInput.current?.select(); }, 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editDim?.id]);
 
   // ---------- viewport ----------
   useEffect(() => {
@@ -233,8 +242,11 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
     const id = target.getAttribute('data-id') ?? undefined;
 
     if (kind === 'dim' && id && editable) {
-      const e = graph.e[id];
-      const len = Math.hypot(graph.v[e.b].x - graph.v[e.a].x, graph.v[e.b].y - graph.v[e.a].y);
+      // impede o mousedown padrão de levar o foco para o canvas (fecharia o campo recém-aberto)
+      e.preventDefault();
+      dimOpenedAt.current = performance.now();
+      const ed = graph.e[id];
+      const len = Math.hypot(graph.v[ed.b].x - graph.v[ed.a].x, graph.v[ed.b].y - graph.v[ed.a].y);
       setEditDim({ id, value: (+len.toFixed(2)).toString().replace('.', ',') });
       return;
     }
@@ -775,7 +787,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
         return (
           <Box position="absolute" left={`${(mx - vb[0]) * v.scale}px`} top={`${(my - vb[1]) * v.scale}px`} transform="translate(-50%, -50%)" zIndex={2}>
             <input
-              autoFocus
+              ref={dimInput}
               value={editDim.value}
               onChange={(ev) => setEditDim({ ...editDim, value: ev.target.value })}
               onFocus={(ev) => ev.target.select()}
@@ -783,7 +795,12 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
                 if (ev.key === 'Enter') applyDim();
                 if (ev.key === 'Escape') setEditDim(null);
               }}
-              onBlur={applyDim}
+              onBlur={() => {
+                // um blur logo após abrir vem do próprio clique: devolve o foco em vez de fechar
+                if (performance.now() - dimOpenedAt.current < 300) setTimeout(() => dimInput.current?.focus(), 0);
+                else applyDim();
+              }}
+              onPointerDown={(ev) => ev.stopPropagation()}
               style={{
                 width: 78, padding: '3px 6px', fontSize: 13, fontWeight: 600, textAlign: 'center',
                 border: '2px solid #F59E0B', borderRadius: 8, outline: 'none', background: 'white', boxShadow: '0 4px 12px rgba(0,0,0,.15)',
