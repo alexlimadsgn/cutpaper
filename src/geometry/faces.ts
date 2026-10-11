@@ -244,7 +244,11 @@ export function deriveDieline(g: Graph, names: Record<string, string> = {}, root
   const panelHe = new Set([...faces.values()].flatMap((f) => f.loop.halfEdges));
   const dead = Object.keys(g.e).filter((e) => g.e[e].type === 'crease' && !panelHe.has(he(e, 0)) && !panelHe.has(he(e, 1)));
 
-  return { faces: list, cuts: chain(g, 'cut'), creases: chain(g, 'crease', new Set(dead)), dead };
+  const edgeFaces: Record<string, string[]> = {};
+  for (const f of faces.values())
+    for (const e of new Set(f.loop.edges)) (edgeFaces[e] ??= []).push(f.id);
+
+  return { faces: list, cuts: chain(g, 'cut'), creases: chain(g, 'crease', new Set(dead)), dead, edgeFaces };
 }
 
 /**
@@ -344,4 +348,18 @@ export function clearSteps(g: Graph): Graph {
     e[id] = rest;
   }
   return { ...g, e };
+}
+
+/**
+ * Aba (cola/encaixe): ponta da árvore de dobras (sem faces filhas) e bem menor que a face
+ * onde se prende. Suas medidas são ajustadas no painel de propriedades, não pelas cotas.
+ */
+export function flapIds(d: Dieline): Set<string> {
+  const byId = new Map(d.faces.map((f) => [f.id, f]));
+  const hasKids = new Set(d.faces.map((f) => f.parent).filter(Boolean));
+  return new Set(
+    d.faces
+      .filter((f) => f.parent && !hasKids.has(f.id) && Math.abs(f.area) < Math.abs(byId.get(f.parent)!.area) * 0.35)
+      .map((f) => f.id),
+  );
 }

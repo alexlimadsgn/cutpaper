@@ -2,7 +2,7 @@ import { Box, Button, Group, IconButton, Text } from '@chakra-ui/react';
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from 'react';
 import { center, createObject, objectToSvg, toLocal, toWorld, type ArtObject, type ArtType } from '../art/objects';
 import { buildArt, COLORS, objectClip } from '../export/svg';
-import { faceAt } from '../geometry/faces';
+import { faceAt, flapIds } from '../geometry/faces';
 import {
   addSegments, deleteEdges, deleteVertices, moveVertices, normalize, setEdgeLength, splitEdge, type Graph,
 } from '../geometry/graph';
@@ -523,11 +523,16 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
   const selV = new Set(s.sel.vertices), selE = new Set(s.sel.edges);
 
   // cotas: só nas linhas grandes o bastante na tela para caber o rótulo
+  // só largura/altura de painéis: linhas horizontais/verticais que tocam uma face que não é aba
+  const flaps = flapIds(dieline);
   const dims = editable && s.showDims && !compact
     ? Object.entries(graph.e).flatMap(([id, e]) => {
         const A = graph.v[e.a], B = graph.v[e.b];
         const len = Math.hypot(B.x - A.x, B.y - A.y);
         if (len * v.scale < 46) return [];
+        const straight = Math.abs(B.x - A.x) < 1e-6 * len || Math.abs(B.y - A.y) < 1e-6 * len;
+        const panels = (dieline.edgeFaces[id] ?? []).filter((f) => !flaps.has(f));
+        if (!straight || !panels.length) return [];
         return [{ id, x: (A.x + B.x) / 2, y: (A.y + B.y) / 2, len, type: e.type }];
       })
     : [];

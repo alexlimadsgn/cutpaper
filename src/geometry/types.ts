@@ -28,6 +28,8 @@ export interface Dieline {
   creases: Vec2[][];
   /** Arestas de vinco sem efeito (passam pelo vazio de um furo); não são exportadas. */
   dead: string[];
+  /** Faces (painéis) de cada lado de cada aresta. */
+  edgeFaces: Record<string, string[]>;
 }
 
 export interface BoxParams {
