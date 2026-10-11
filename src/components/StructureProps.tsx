@@ -34,7 +34,7 @@ export function StructureProps() {
           <NumField label="Grade/snap (mm)" value={s.grid} step={0.5} onChange={s.setGrid} />
         </SimpleGrid>
         <Box mt={4}>
-          <Check label="Mostrar medidas nas linhas (clique para editar)" checked={s.showDims} onChange={() => s.setShowDims(!s.showDims)} />
+          <Check label="Mostrar medidas" checked={s.showDims} onChange={() => s.setShowDims(!s.showDims)} />
         </Box>
         {s.importInfo && <Text fontSize="xs" color="gray.600" mt={3}>{s.importInfo}</Text>}
       </Section>

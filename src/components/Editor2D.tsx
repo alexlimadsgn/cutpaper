@@ -4,7 +4,7 @@ import { center, createObject, objectToSvg, toLocal, toWorld, type ArtObject, ty
 import { buildArt, COLORS, objectClip } from '../export/svg';
 import { faceAt, flapIds } from '../geometry/faces';
 import {
-  addSegments, deleteEdges, deleteVertices, moveVertices, normalize, setEdgeLength, splitEdge, type Graph,
+  addSegments, axisOf, deleteEdges, deleteVertices, moveVertices, normalize, setEdgeLength, splitEdge, type Graph,
 } from '../geometry/graph';
 import { polyToPath } from '../geometry/outline';
 import type { Vec2 } from '../geometry/types';
@@ -530,7 +530,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
         const A = graph.v[e.a], B = graph.v[e.b];
         const len = Math.hypot(B.x - A.x, B.y - A.y);
         if (len * v.scale < 46) return [];
-        const straight = Math.abs(B.x - A.x) < 1e-6 * len || Math.abs(B.y - A.y) < 1e-6 * len;
+        const straight = axisOf(B.x - A.x, B.y - A.y) !== null;
         const panels = (dieline.edgeFaces[id] ?? []).filter((f) => !flaps.has(f));
         if (!straight || !panels.length) return [];
         return [{ id, x: (A.x + B.x) / 2, y: (A.y + B.y) / 2, len, type: e.type }];

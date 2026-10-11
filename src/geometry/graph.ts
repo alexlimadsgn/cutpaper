@@ -271,18 +271,29 @@ export function graphBounds(g: Graph) {
  *   final (maior X ou Y) anda junto, mantendo painéis alinhados (ex.: largura de um painel).
  * - Inclinada: só a ponta `b` se move ao longo da própria direção.
  */
+/**
+ * Eixo de uma linha "reta": 'x' se horizontal, 'y' se vertical, null se inclinada.
+ * Tolera até 1° (arquivos importados costumam ter sobras decimais, ex.: 60,0004).
+ */
+export function axisOf(dx: number, dy: number): 'x' | 'y' | null {
+  const l = Math.hypot(dx, dy);
+  const tol = l * Math.tan((1 * Math.PI) / 180);
+  return Math.abs(dy) <= tol ? 'x' : Math.abs(dx) <= tol ? 'y' : null;
+}
+
 export function setEdgeLength(g0: Graph, eid: string, length: number): Graph {
   const e = g0.e[eid];
   if (!e || length <= 0) return g0;
   const g = cloneGraph(g0);
   const A = g.v[e.a], B = g.v[e.b];
   const dx = B.x - A.x, dy = B.y - A.y, len = Math.hypot(dx, dy);
-  const tol = 1e-6 * Math.max(1, len);
-  const axis = Math.abs(dy) <= tol ? 'x' : Math.abs(dx) <= tol ? 'y' : null;
+  const axis = axisOf(dx, dy);
   if (axis) {
+    // mede/estica no eixo (ignora a pequena sobra perpendicular de arquivos importados)
+    const span = Math.abs(axis === 'x' ? dx : dy);
     const hi = Math.max(A[axis], B[axis]);
-    const delta = length - len;
-    for (const id in g.v) if (g.v[id][axis] >= hi - 1e-6) g.v[id][axis] += delta;
+    const delta = length - span;
+    for (const id in g.v) if (g.v[id][axis] >= hi - 0.05) g.v[id][axis] += delta;
   } else {
     B.x = A.x + (dx / len) * length;
     B.y = A.y + (dy / len) * length;
