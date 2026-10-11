@@ -1,5 +1,5 @@
 import { Box, Button, Flex, SimpleGrid, Slider, Stack, Text } from '@chakra-ui/react';
-import { ChevronLeft, ChevronRight, CircleAlert, CircleCheck, Info, Pause, Play, RotateCcw, TriangleAlert, Wand2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CircleAlert, CircleCheck, Info, Pause, Play, RotateCcw, Ruler, TriangleAlert, Wand2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { COLORS } from '../export/svg';
 import { clearSteps } from '../geometry/faces';
@@ -8,6 +8,7 @@ import { useStore } from '../store';
 import { useDieline } from '../useDieline';
 import type { Issue, Severity } from '../verify/checks';
 import { autoFix } from '../verify/autofix';
+import { rectify } from '../verify/rectify';
 import { useChecks } from '../verify/useChecks';
 import { Check, NumField, Section } from './ui';
 
@@ -29,7 +30,29 @@ export function VerifyProps() {
   const goStep = (k: number) => { setPlaying(false); s.setFold(steps ? Math.max(0, Math.min(steps, k)) / steps : 0); };
   const [playing, setPlaying] = useState(false);
   const [fixing, setFixing] = useState(false);
-  const [fixReport, setFixReport] = useState<{ changes: string[]; before: number; after: number } | null>(null);
+  const [fixReport, setFixReport] = useState<{ title?: string; changes: string[]; before: number; after: number } | null>(null);
+  const runRectify = () => {
+    setFixing(true);
+    setTimeout(() => {
+      const st = useStore.getState();
+      const r = rectify(st.doc.graph, st.doc.names, st.doc.root, st.sel.face);
+      const f = autoFix(r.graph, st.doc.names, st.doc.root);
+      st.commit({ graph: f.graph });
+      setFixReport({
+        title: 'Geometria endireitada',
+        changes: [
+          `Referência: "${r.reference}"`,
+          `${r.rebuilt} painel(is) refeito(s) em esquadro, ${r.moved} aba(s)/forma(s) reposicionada(s)`,
+          ...(r.unreached.length ? [`Sem ligação por vinco (não alteradas): ${r.unreached.join(', ')}`] : []),
+          ...f.changes,
+        ],
+        before: f.conflictsBefore,
+        after: f.conflictsAfter,
+      });
+      setFixing(false);
+      st.setFold(1);
+    }, 30);
+  };
   const runFix = () => {
     setFixing(true);
     // deixa o botão mostrar "corrigindo…" antes do cálculo (≈0,5 s)
@@ -145,8 +168,13 @@ export function VerifyProps() {
         <Button w="full" size="sm" colorPalette="red" variant="outline" loading={fixing} loadingText="Corrigindo…" onClick={runFix}>
           <Wand2 size={15} /> Corrigir montagem
         </Button>
+        <Button w="full" size="sm" variant="outline" mt={2} loading={fixing} onClick={runRectify}>
+          <Ruler size={15} /> Endireitar geometria
+        </Button>
         <Text fontSize="xs" color="gray.500" mt={2}>
-          Ajusta ângulo e sentido das dobras para a caixa fechar e o tamanho das abas de cola
+          <b>Endireitar</b>: refaz o molde deformado em esquadro a partir da face selecionada
+          {s.sel.face ? '' : ' (ou da mais retangular)'}, seguindo os vincos.{' '}
+          <b>Corrigir montagem</b>: ajusta ângulo e sentido das dobras para a caixa fechar e o tamanho das abas de cola
           (encolhe as que sobram ou se sobrepõem, aumenta as pequenas demais). Ctrl+Z desfaz.
         </Text>
         {fixReport && (
@@ -154,7 +182,7 @@ export function VerifyProps() {
             {fixReport.changes.length ? (
               <>
                 <Text fontWeight="700" color="blue.800" mb={1}>
-                  {fixReport.changes.length} ajuste(s){fixReport.before !== fixReport.after ? ` · faces com problema: ${fixReport.before} → ${fixReport.after}` : ''}
+                  {fixReport.title ?? `${fixReport.changes.length} ajuste(s)`}{fixReport.before !== fixReport.after ? ` · faces com problema: ${fixReport.before} → ${fixReport.after}` : ''}
                 </Text>
                 <Stack gap={0.5} color="blue.900">
                   {fixReport.changes.map((c, i) => <Text key={i}>• {c}</Text>)}
