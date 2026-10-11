@@ -1,8 +1,9 @@
 import { Box, Button, Flex, Group, Heading, IconButton, Menu, Portal, Text } from '@chakra-ui/react';
 import {
-  Box as BoxIcon, ChevronDown, Circle, Download, FileCode, FilePlus, FileText, FolderOpen, Save, Square, Type, FoldVertical, ImagePlus, Map as MapIcon, Minimize2, MousePointer2, Redo2, Scissors, Undo2, Upload,
+  Box as BoxIcon, ChevronDown, Circle, Download, FileCode, FilePlus, FileText, FolderOpen, Info, Save, Square, Type, FoldVertical, ImagePlus, Map as MapIcon, Minimize2, MousePointer2, Redo2, Scissors, Undo2, Upload,
 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
+import { AboutDialog } from './components/AboutDialog';
 import { ArtProps } from './components/ArtProps';
 import { Editor2D } from './components/Editor2D';
 import { LayersPanel } from './components/LayersPanel';
@@ -180,6 +181,7 @@ function RailButton({ label, active, onClick, children }: { label: string; activ
 /** Ferramentas do modo atual. */
 function ToolRail() {
   const s = useStore();
+  const [about, setAbout] = useState(false);
   const select = <RailButton label="Selecionar (V)" active={s.tool === 'select'} onClick={() => s.setTool('select')}><MousePointer2 size={18} /></RailButton>;
   return (
     <Flex direction="column" align="center" gap={1} w="56px" py={3} flexShrink={0} bg="white" borderRightWidth="1px" borderColor="gray.200">
@@ -198,6 +200,9 @@ function ToolRail() {
           <RailButton label={s.sel.face ? 'Imagem (na face selecionada)' : 'Imagem'} onClick={insertImageObject}><ImagePlus size={18} /></RailButton>
         </>
       )}
+      <Box flex={1} />
+      <RailButton label="Sobre o CutPaper" onClick={() => setAbout(true)}><Info size={18} /></RailButton>
+      <AboutDialog open={about} onClose={() => setAbout(false)} />
     </Flex>
   );
 }
