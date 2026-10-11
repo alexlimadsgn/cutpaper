@@ -269,7 +269,8 @@ export function graphBounds(g: Graph) {
  * Muda o comprimento de uma aresta.
  * - Horizontal/vertical: "estica" o molde como no CAD — todo vértice além da ponta
  *   final (maior X ou Y) anda junto, mantendo painéis alinhados (ex.: largura de um painel).
- * - Inclinada: só a ponta `b` se move ao longo da própria direção.
+ * - Inclinada: a ponta mais conectada fica fixa (ex.: o vértice do topo de um cone)
+ *   e a outra se move ao longo da própria linha.
  */
 /**
  * Eixo de uma linha "reta": 'x' se horizontal, 'y' se vertical, null se inclinada.
@@ -295,8 +296,11 @@ export function setEdgeLength(g0: Graph, eid: string, length: number): Graph {
     const delta = length - span;
     for (const id in g.v) if (g.v[id][axis] >= hi - 0.05) g.v[id][axis] += delta;
   } else {
-    B.x = A.x + (dx / len) * length;
-    B.y = A.y + (dy / len) * length;
+    const degree = (v: string) => Object.values(g.e).filter((x) => x.a === v || x.b === v).length;
+    const [fixed, moving] = degree(e.b) > degree(e.a) ? [B, A] : [A, B];
+    const ux = (moving.x - fixed.x) / len, uy = (moving.y - fixed.y) / len;
+    moving.x = fixed.x + ux * length;
+    moving.y = fixed.y + uy * length;
   }
   return normalize(g, 0.01);
 }
