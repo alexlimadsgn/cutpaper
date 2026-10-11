@@ -44,6 +44,27 @@ export function Inspector() {
             </SimpleGrid>
           )}
           {creases.length > 0 && (() => {
+            // fechamento em %: 100% = 90°; o sinal (sentido) é mantido
+            const ids = edges.filter((id) => g.e[id].type === 'crease');
+            const a = creases[0].angle;
+            const sign = a < 0 ? -1 : 1;
+            const pct = Math.round((Math.abs(a) / 90) * 100);
+            const setPct = (p: number) => s.commit({ graph: updateEdges(g, ids, { angle: sign * Math.min(180, Math.max(0, +(90 * p / 100).toFixed(1))) }) });
+            return (
+              <Stack gap={2}>
+                <SimpleGrid columns={2} gap={3} alignItems="end">
+                  <NumField label="Fechamento (%)" min={0} step={5} value={pct} onChange={setPct} />
+                  <Text fontSize="xs" color="gray.500" pb={2}>100% = 90° · 200% = 180°</Text>
+                </SimpleGrid>
+                <Group attached w="full">
+                  {[25, 50, 75, 100].map((p) => (
+                    <Button key={p} flex={1} size="xs" variant={pct === p ? 'solid' : 'outline'} onClick={() => setPct(p)}>{p}%</Button>
+                  ))}
+                </Group>
+              </Stack>
+            );
+          })()}
+          {creases.length > 0 && (() => {
             const ids = edges.filter((id) => g.e[id].type === 'crease');
             const f = faceOfHinge(g, dieline, ids[0]);
             if (!f?.step) return null;

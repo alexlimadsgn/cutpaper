@@ -1,5 +1,5 @@
 import { Box, Button, Flex, SimpleGrid, Slider, Stack, Text } from '@chakra-ui/react';
-import { ChevronLeft, ChevronRight, CircleAlert, CircleCheck, Info, Pause, Play, RotateCcw, TriangleAlert } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CircleAlert, CircleCheck, Info, Pause, Play, RotateCcw, TriangleAlert, Wand2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { COLORS } from '../export/svg';
 import { clearSteps } from '../geometry/faces';
@@ -7,6 +7,7 @@ import { stepCount } from '../geometry/fold';
 import { useStore } from '../store';
 import { useDieline } from '../useDieline';
 import type { Issue, Severity } from '../verify/checks';
+import { autoFix } from '../verify/autofix';
 import { useChecks } from '../verify/useChecks';
 import { Check, NumField, Section } from './ui';
 
@@ -27,6 +28,20 @@ export function VerifyProps() {
   const manual = Object.values(s.doc.graph.e).some((e) => e.step);
   const goStep = (k: number) => { setPlaying(false); s.setFold(steps ? Math.max(0, Math.min(steps, k)) / steps : 0); };
   const [playing, setPlaying] = useState(false);
+  const [fixing, setFixing] = useState(false);
+  const [fixReport, setFixReport] = useState<{ changes: string[]; before: number; after: number } | null>(null);
+  const runFix = () => {
+    setFixing(true);
+    // deixa o botão mostrar "corrigindo…" antes do cálculo (≈0,5 s)
+    setTimeout(() => {
+      const st = useStore.getState();
+      const r = autoFix(st.doc.graph, st.doc.names, st.doc.root);
+      if (r.changes.length) st.commit({ graph: r.graph });
+      setFixReport({ changes: r.changes, before: r.conflictsBefore, after: r.conflictsAfter });
+      setFixing(false);
+      st.setFold(1);
+    }, 30);
+  };
   const raf = useRef(0);
 
   // anima planificado → montado → planificado
@@ -124,6 +139,32 @@ export function VerifyProps() {
         <Text fontSize="xs" color="gray.500" mt={2}>
           Clique numa etapa para ver a caixa até ali. Para mudar a ordem, selecione o vinco no modo Estrutura.
         </Text>
+      </Section>
+
+      <Section title="Correção automática">
+        <Button w="full" size="sm" colorPalette="red" variant="outline" loading={fixing} loadingText="Corrigindo…" onClick={runFix}>
+          <Wand2 size={15} /> Corrigir montagem
+        </Button>
+        <Text fontSize="xs" color="gray.500" mt={2}>
+          Ajusta ângulo e sentido das dobras para a caixa fechar e o tamanho das abas de cola
+          (encolhe as que sobram ou se sobrepõem, aumenta as pequenas demais). Ctrl+Z desfaz.
+        </Text>
+        {fixReport && (
+          <Box mt={3} p={3} borderRadius="md" bg={fixReport.changes.length ? 'blue.50' : 'gray.50'} fontSize="xs">
+            {fixReport.changes.length ? (
+              <>
+                <Text fontWeight="700" color="blue.800" mb={1}>
+                  {fixReport.changes.length} ajuste(s){fixReport.before !== fixReport.after ? ` · faces com problema: ${fixReport.before} → ${fixReport.after}` : ''}
+                </Text>
+                <Stack gap={0.5} color="blue.900">
+                  {fixReport.changes.map((c, i) => <Text key={i}>• {c}</Text>)}
+                </Stack>
+              </>
+            ) : (
+              <Text color="gray.600">Nada para corrigir: as dobras já fecham a caixa e as abas estão no tamanho certo.</Text>
+            )}
+          </Box>
+        )}
       </Section>
 
       <Section title="Verificação">
