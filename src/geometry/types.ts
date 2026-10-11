@@ -14,6 +14,10 @@ export interface Face {
   hinge?: [Vec2, Vec2];
   /** Ângulo de dobra final em graus. */
   angle?: number;
+  /** Etapa de montagem em que esta face dobra (1..N); a base não tem etapa. */
+  step?: number;
+  /** A etapa foi definida pelo usuário no vinco (senão é automática). */
+  stepManual?: boolean;
 }
 
 export interface Dieline {

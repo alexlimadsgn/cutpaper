@@ -4,8 +4,18 @@ import { polyArea } from './faces';
 import { toPaths, fromPaths } from './outline';
 import type { Face, Vec2 } from './types';
 
+/** Número de etapas de montagem do molde. */
+export const stepCount = (faces: Face[]) => Math.max(0, ...faces.map((f) => f.step ?? 0));
+
+/** Quanto (0..1) a face já dobrou quando a montagem inteira está em t (0..1), etapa por etapa. */
+export function stepProgress(f: Face, t: number, steps: number) {
+  if (!f.step || steps <= 1) return t;
+  return Math.max(0, Math.min(1, t * steps - (f.step - 1)));
+}
+
 /** Matriz de cada face: compõe as rotações ao longo da árvore de dobras. */
 export function foldMatrices(faces: Face[], t: number) {
+  const steps = stepCount(faces);
   const byId = new Map(faces.map((f) => [f.id, f]));
   const cache = new Map<string, THREE.Matrix4>();
   const get = (f: Face): THREE.Matrix4 => {
@@ -21,7 +31,7 @@ export function foldMatrices(faces: Face[], t: number) {
       // Com Y para baixo, quem olha o SVG vê o lado −Z (lado impresso).
       // A dobra vai para +Z, deixando a impressão do lado de fora.
       if (axis.x * cy - axis.y * cx < 0) axis.negate();
-      const angle = THREE.MathUtils.degToRad((f.angle ?? 90) * t);
+      const angle = THREE.MathUtils.degToRad((f.angle ?? 90) * stepProgress(f, t, steps));
       const local = new THREE.Matrix4()
         .makeTranslation(a[0], a[1], 0)
         .multiply(new THREE.Matrix4().makeRotationAxis(axis, angle))

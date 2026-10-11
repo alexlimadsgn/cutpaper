@@ -1,9 +1,9 @@
-import { NativeSelect, SimpleGrid, Text } from '@chakra-ui/react';
+import { Box, NativeSelect, SimpleGrid, Text } from '@chakra-ui/react';
 import { graphBounds, scaleGraph } from '../geometry/graph';
 import { TEMPLATES, type TemplateId } from '../geometry/templates';
 import { useStore } from '../store';
 import { Inspector } from './Inspector';
-import { NumField, Section } from './ui';
+import { Check, NumField, Section } from './ui';
 
 /** Propriedades do modo Estrutura: seleção + molde + modelo paramétrico. */
 export function StructureProps() {
@@ -33,6 +33,9 @@ export function StructureProps() {
           <NumField label="Sangria (mm)" value={s.bleed} step={0.5} onChange={s.setBleed} />
           <NumField label="Grade/snap (mm)" value={s.grid} step={0.5} onChange={s.setGrid} />
         </SimpleGrid>
+        <Box mt={4}>
+          <Check label="Mostrar medidas nas linhas (clique para editar)" checked={s.showDims} onChange={() => s.setShowDims(!s.showDims)} />
+        </Box>
         {s.importInfo && <Text fontSize="xs" color="gray.600" mt={3}>{s.importInfo}</Text>}
       </Section>
 

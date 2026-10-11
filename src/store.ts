@@ -60,6 +60,8 @@ interface State {
   dragging: boolean;
   /** Passo da grade de snap em mm (0 = desligado). */
   grid: number;
+  /** Mostra as cotas (medidas) das linhas no modo Estrutura. */
+  showDims: boolean;
   /** Resumo da última importação de SVG. */
   importInfo?: string;
   /** Incrementado quando o molde é substituído (o editor reenquadra a vista). */
@@ -102,6 +104,7 @@ interface State {
   reorderObject: (id: string, to: 'up' | 'down' | 'front' | 'back') => void;
   select: (sel: Partial<Selection>) => void;
   setGrid: (v: number) => void;
+  setShowDims: (v: boolean) => void;
   reset: () => void;
 }
 
@@ -138,6 +141,7 @@ export const useStore = create<State>((set, get) => ({
   sel: EMPTY_SEL,
   dragging: false,
   grid: 1,
+  showDims: true,
   fitToken: 0,
   safeMargin: 3,
   fontsVersion: 0,
@@ -257,6 +261,7 @@ export const useStore = create<State>((set, get) => ({
     }),
   select: (sel) => set({ sel: { ...EMPTY_SEL, ...sel } }),
   setGrid: (grid) => set({ grid }),
+  setShowDims: (showDims) => set({ showDims }),
   reset: () => {
     set({ params: DEFAULT_PARAMS, bleed: 3, fullImage: undefined, faceImages: {}, faceColors: {}, bgColor: undefined, sel: EMPTY_SEL, template: 'lidBox' });
     get().regenerate();

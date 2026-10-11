@@ -1,5 +1,7 @@
 import { Button, Flex, Group, Input, SimpleGrid, Stack, Text } from '@chakra-ui/react';
 import { DEFAULT_ANGLE, deleteEdges, deleteVertices, normalize, updateEdges, type EdgeType } from '../geometry/graph';
+import { faceOfHinge, withSteps } from '../geometry/faces';
+import { stepCount } from '../geometry/fold';
 import { useStore } from '../store';
 import { useDieline } from '../useDieline';
 import { NumField, Section } from './ui';
@@ -41,6 +43,26 @@ export function Inspector() {
               </Button>
             </SimpleGrid>
           )}
+          {creases.length > 0 && (() => {
+            const ids = edges.filter((id) => g.e[id].type === 'crease');
+            const f = faceOfHinge(g, dieline, ids[0]);
+            if (!f?.step) return null;
+            const total = stepCount(dieline.faces);
+            return (
+              <Stack gap={1}>
+                <SimpleGrid columns={2} gap={3} alignItems="end">
+                  <NumField
+                    label={`Etapa da montagem (de ${total})`}
+                    min={1}
+                    value={f.step}
+                    onChange={(v) => s.commit({ graph: withSteps(g, dieline, Object.fromEntries(ids.map((id) => [id, Math.max(1, Math.round(v))]))) })}
+                  />
+                  <Text fontSize="xs" color="gray.500" pb={2}>{g.e[ids[0]].step ? 'definida por você' : 'automática'}</Text>
+                </SimpleGrid>
+                <Text fontSize="xs" color="gray.500">Dobra "{f.name}". Use um número maior para dobrar depois.</Text>
+              </Stack>
+            );
+          })()}
           <Text fontSize="xs" color="gray.500">Comprimento: {len.toFixed(2)} mm · duplo clique na linha insere um vértice</Text>
           <Button size="sm" variant="outline" colorPalette="red" onClick={() => { s.commit({ graph: deleteEdges(g, edges) }); s.select({}); }}>
             Excluir linha{edges.length > 1 ? 's' : ''}

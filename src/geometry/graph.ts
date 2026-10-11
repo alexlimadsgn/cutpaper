@@ -13,6 +13,8 @@ export interface Edge {
   type: EdgeType;
   /** Ângulo de dobra em graus (só vincos). Negativo = dobra no sentido oposto. */
   angle: number;
+  /** Etapa de montagem definida pelo usuário (vinco); undefined = automática. */
+  step?: number;
 }
 export interface Graph {
   v: Record<string, Vertex>;
@@ -261,4 +263,29 @@ export function graphBounds(g: Graph) {
   }
   if (minX === Infinity) return { minX: 0, minY: 0, maxX: 0, maxY: 0, w: 0, h: 0 };
   return { minX, minY, maxX, maxY, w: maxX - minX, h: maxY - minY };
+}
+
+/**
+ * Muda o comprimento de uma aresta.
+ * - Horizontal/vertical: "estica" o molde como no CAD — todo vértice além da ponta
+ *   final (maior X ou Y) anda junto, mantendo painéis alinhados (ex.: largura de um painel).
+ * - Inclinada: só a ponta `b` se move ao longo da própria direção.
+ */
+export function setEdgeLength(g0: Graph, eid: string, length: number): Graph {
+  const e = g0.e[eid];
+  if (!e || length <= 0) return g0;
+  const g = cloneGraph(g0);
+  const A = g.v[e.a], B = g.v[e.b];
+  const dx = B.x - A.x, dy = B.y - A.y, len = Math.hypot(dx, dy);
+  const tol = 1e-6 * Math.max(1, len);
+  const axis = Math.abs(dy) <= tol ? 'x' : Math.abs(dx) <= tol ? 'y' : null;
+  if (axis) {
+    const hi = Math.max(A[axis], B[axis]);
+    const delta = length - len;
+    for (const id in g.v) if (g.v[id][axis] >= hi - 1e-6) g.v[id][axis] += delta;
+  } else {
+    B.x = A.x + (dx / len) * length;
+    B.y = A.y + (dy / len) * length;
+  }
+  return normalize(g, 0.01);
 }

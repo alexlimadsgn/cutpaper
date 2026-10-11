@@ -4,7 +4,7 @@ import { center, createObject, objectToSvg, toLocal, toWorld, type ArtObject, ty
 import { buildArt, COLORS, objectClip } from '../export/svg';
 import { faceAt } from '../geometry/faces';
 import {
-  addSegments, deleteEdges, deleteVertices, moveVertices, normalize, splitEdge, type Graph,
+  addSegments, deleteEdges, deleteVertices, moveVertices, normalize, setEdgeLength, splitEdge, type Graph,
 } from '../geometry/graph';
 import { polyToPath } from '../geometry/outline';
 import type { Vec2 } from '../geometry/types';
@@ -52,6 +52,8 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
   const [creating, setCreating] = useState<{ type: ArtType; a: Vec2; b: Vec2 } | null>(null);
   const [space, setSpace] = useState(false);
   const [dragGuides, setDragGuides] = useState<[Vec2, Vec2][]>([]);
+  /** Cota em edição: aresta e texto digitado. */
+  const [editDim, setEditDim] = useState<{ id: string; value: string } | null>(null);
 
   // ---------- viewport ----------
   useEffect(() => {
@@ -229,6 +231,13 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
     const target = e.target as Element;
     const kind = target.getAttribute('data-kind');
     const id = target.getAttribute('data-id') ?? undefined;
+
+    if (kind === 'dim' && id && editable) {
+      const e = graph.e[id];
+      const len = Math.hypot(graph.v[e.b].x - graph.v[e.a].x, graph.v[e.b].y - graph.v[e.a].y);
+      setEditDim({ id, value: (+len.toFixed(2)).toString().replace('.', ',') });
+      return;
+    }
 
     if (artMode) {
       if (kind === 'obj-handle' && selObj) {
@@ -500,6 +509,25 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
   );
 
   const selV = new Set(s.sel.vertices), selE = new Set(s.sel.edges);
+
+  // cotas: só nas linhas grandes o bastante na tela para caber o rótulo
+  const dims = editable && s.showDims && !compact
+    ? Object.entries(graph.e).flatMap(([id, e]) => {
+        const A = graph.v[e.a], B = graph.v[e.b];
+        const len = Math.hypot(B.x - A.x, B.y - A.y);
+        if (len * v.scale < 46) return [];
+        return [{ id, x: (A.x + B.x) / 2, y: (A.y + B.y) / 2, len, type: e.type }];
+      })
+    : [];
+  const applyDim = () => {
+    if (!editDim) return;
+    const v2 = parseFloat(editDim.value.replace(',', '.'));
+    setEditDim(null);
+    const e = graph.e[editDim.id];
+    if (!e || !(v2 > 0)) return;
+    const len = Math.hypot(graph.v[e.b].x - graph.v[e.a].x, graph.v[e.b].y - graph.v[e.a].y);
+    if (Math.abs(v2 - len) > 1e-4) s.commit({ graph: setEdgeLength(graph, editDim.id, v2) });
+  };
   const dead = new Set(dieline.dead);
 
   // alças só nos cantos reais; vértices intermediários de curvas aparecem com zoom ou se selecionados
@@ -606,7 +634,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
             <g key={id}>
               <line
                 x1={A.x} y1={A.y} x2={B.x} y2={B.y}
-                stroke={selected ? '#F59E0B' : e.type === 'cut' ? COLORS.cut : COLORS.crease}
+                stroke={selected ? '#F59E0B' : s.mode === 'art' ? '#CBD5E1' : e.type === 'cut' ? COLORS.cut : COLORS.crease}
                 strokeWidth={selected ? 2.5 : 1.25}
                 strokeDasharray={e.type === 'crease' ? '6 4' : undefined}
                 strokeOpacity={selected ? 1 : !visible ? 0.15 : dead.has(id) ? 0.3 : 1}
@@ -616,6 +644,32 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
               {editable && s.tool === 'select' && (
                 <line data-kind="edge" data-id={id} x1={A.x} y1={A.y} x2={B.x} y2={B.y} stroke="transparent" strokeWidth={10 * px} style={{ cursor: 'move' }} />
               )}
+            </g>
+          );
+        })}
+
+        {dims.map((d) => {
+          const label = `${(+d.len.toFixed(1)).toString().replace('.', ',')}`;
+          const w = (label.length * 6.2 + 10) * px, h = 15 * px;
+          if (editDim?.id === d.id) return null;
+          return (
+            <g key={`dim-${d.id}`} style={{ cursor: 'text' }}>
+              <rect
+                data-kind="dim" data-id={d.id}
+                x={d.x - w / 2} y={d.y - h / 2} width={w} height={h} rx={h / 2}
+                fill="white" fillOpacity={0.92}
+                stroke={d.type === 'cut' ? COLORS.cut : COLORS.crease} strokeOpacity={0.5} strokeWidth={1} vectorEffect="non-scaling-stroke"
+              >
+                <title>Clique para editar a medida (mm)</title>
+              </rect>
+              <text
+                x={d.x} y={d.y + 3.6 * px} textAnchor="middle" fontWeight={600}
+                // style (não atributo): o CSS global da página sobrepõe o atributo font-size
+                style={{ fontSize: 10.5 * px }}
+                fill="#334155" pointerEvents="none"
+              >
+                {label}
+              </text>
             </g>
           );
         })}
@@ -694,7 +748,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
           const len = Math.hypot(x - draw.start[0], y - draw.start[1]);
           const ang = (Math.atan2(-(y - draw.start[1]), x - draw.start[0]) * 180) / Math.PI;
           return (
-            <text x={x + 10 * px} y={y - 10 * px} fontSize={11 * px} fill="#334155" stroke="white" strokeWidth={3 * px} paintOrder="stroke" pointerEvents="none">
+            <text x={x + 10 * px} y={y - 10 * px} style={{ fontSize: 11 * px }} fill="#334155" stroke="white" strokeWidth={3 * px} paintOrder="stroke" pointerEvents="none">
               {len.toFixed(1)} mm · {((ang + 360) % 360).toFixed(0)}°
             </text>
           );
@@ -714,6 +768,31 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
           />
         )}
       </svg>
+
+      {editDim && graph.e[editDim.id] && (() => {
+        const e = graph.e[editDim.id];
+        const mx = (graph.v[e.a].x + graph.v[e.b].x) / 2, my = (graph.v[e.a].y + graph.v[e.b].y) / 2;
+        return (
+          <Box position="absolute" left={`${(mx - vb[0]) * v.scale}px`} top={`${(my - vb[1]) * v.scale}px`} transform="translate(-50%, -50%)" zIndex={2}>
+            <input
+              autoFocus
+              value={editDim.value}
+              onChange={(ev) => setEditDim({ ...editDim, value: ev.target.value })}
+              onFocus={(ev) => ev.target.select()}
+              onKeyDown={(ev) => {
+                if (ev.key === 'Enter') applyDim();
+                if (ev.key === 'Escape') setEditDim(null);
+              }}
+              onBlur={applyDim}
+              style={{
+                width: 78, padding: '3px 6px', fontSize: 13, fontWeight: 600, textAlign: 'center',
+                border: '2px solid #F59E0B', borderRadius: 8, outline: 'none', background: 'white', boxShadow: '0 4px 12px rgba(0,0,0,.15)',
+              }}
+            />
+            <Text fontSize="2xs" color="gray.600" textAlign="center" mt="2px" bg="whiteAlpha.900" borderRadius="sm">mm · Enter</Text>
+          </Box>
+        );
+      })()}
 
       {editable && isLineTool && (
         <Text position="absolute" top={3} left="50%" transform="translateX(-50%)" fontSize="xs" bg="white" px={3} py={1} borderRadius="full" shadow="sm" color="gray.600">

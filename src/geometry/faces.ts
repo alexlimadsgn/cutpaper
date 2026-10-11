@@ -222,6 +222,7 @@ export function deriveDieline(g: Graph, names: Record<string, string> = {}, root
         child.parent = f;
         child.hinge = [[g.v[e.a].x, g.v[e.a].y], [g.v[e.b].x, g.v[e.b].y]];
         child.angle = e.angle;
+        if (e.step) { child.step = e.step; child.stepManual = true; }
         q.push(n.to);
       }
     }
@@ -235,14 +236,35 @@ export function deriveDieline(g: Graph, names: Record<string, string> = {}, root
     .sort((a, b) => a.key - b.key)
     .map(({ f }, i): Face => ({
       id: f.id, name: names[f.id] ?? `Face ${i + 1}`, poly: f.poly, holes: f.holes, area: f.area,
-      parent: f.parent, hinge: f.hinge, angle: f.angle,
+      parent: f.parent, hinge: f.hinge, angle: f.angle, step: f.step, stepManual: f.stepManual,
     }));
+  assignSteps(list);
 
   // vincos que não tocam nenhum painel (o trecho que passa pelo vazio de um furo) não existem no papel
   const panelHe = new Set([...faces.values()].flatMap((f) => f.loop.halfEdges));
   const dead = Object.keys(g.e).filter((e) => g.e[e].type === 'crease' && !panelHe.has(he(e, 0)) && !panelHe.has(he(e, 1)));
 
   return { faces: list, cuts: chain(g, 'cut'), creases: chain(g, 'crease', new Set(dead)), dead };
+}
+
+/**
+ * Etapas de montagem. Automática: profundidade na árvore de dobras (paredes → abas → tampa…);
+ * a partir do 2º nível, faces que ainda têm filhas dobram depois das que não têm
+ * (ex.: abas de cola antes da tampa, e a aba de encaixe por último).
+ * As etapas manuais entram na mesma escala; no fim tudo vira 1..N sem buracos.
+ */
+function assignSteps(faces: Face[]) {
+  const byId = new Map(faces.map((f) => [f.id, f]));
+  const hasKids = new Set(faces.map((f) => f.parent).filter(Boolean));
+  const depth = (f: Face): number => (f.parent ? 1 + depth(byId.get(f.parent)!) : 0);
+  const raw = new Map<string, number>();
+  for (const f of faces) {
+    if (!f.parent) continue;
+    const d = depth(f);
+    raw.set(f.id, f.stepManual && f.step ? f.step : d + (d >= 2 && hasKids.has(f.id) ? 0.5 : 0));
+  }
+  const ranks = [...new Set(raw.values())].sort((a, b) => a - b);
+  for (const f of faces) f.step = f.parent ? ranks.indexOf(raw.get(f.id)!) + 1 : undefined;
 }
 
 /**
@@ -283,4 +305,43 @@ export function faceAt(d: Dieline, p: Vec2) {
   return d.faces
     .filter((f) => pointInPoly(p, f.poly) && !f.holes.some((h) => pointInPoly(p, h)))
     .sort((a, b) => a.area - b.area)[0];
+}
+
+/** Arestas do grafo que formam a dobradiça de uma face (vinco com a face-pai). */
+export function hingeEdges(g: Graph, f: Face): string[] {
+  if (!f.hinge) return [];
+  const [p, q] = f.hinge;
+  const at = (id: string, pt: Vec2) => Math.hypot(g.v[id].x - pt[0], g.v[id].y - pt[1]) < 1e-6;
+  return Object.keys(g.e).filter((id) => {
+    const e = g.e[id];
+    return e.type === 'crease' && ((at(e.a, p) && at(e.b, q)) || (at(e.a, q) && at(e.b, p)));
+  });
+}
+
+/** Face que dobra numa aresta de vinco (a filha na árvore de dobras). */
+export function faceOfHinge(g: Graph, d: Dieline, edgeId: string): Face | undefined {
+  return d.faces.find((f) => hingeEdges(g, f).includes(edgeId));
+}
+
+/**
+ * Grava a ordem de montagem atual (etapa efetiva de cada face) nos vincos e então
+ * aplica `override` (aresta → etapa). Assim o número que o usuário vê é o que fica salvo.
+ */
+export function withSteps(g: Graph, d: Dieline, override: Record<string, number>): Graph {
+  const e = { ...g.e };
+  for (const f of d.faces)
+    for (const id of hingeEdges(g, f)) e[id] = { ...e[id], step: f.step };
+  for (const [id, step] of Object.entries(override)) if (e[id]) e[id] = { ...e[id], step };
+  return { ...g, e };
+}
+
+/** Remove todas as etapas manuais (volta à ordem automática). */
+export function clearSteps(g: Graph): Graph {
+  const e: Graph['e'] = {};
+  for (const id in g.e) {
+    const { step: _s, ...rest } = g.e[id];
+    void _s;
+    e[id] = rest;
+  }
+  return { ...g, e };
 }

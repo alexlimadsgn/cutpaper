@@ -1,8 +1,11 @@
 import { Box, Button, Flex, SimpleGrid, Slider, Stack, Text } from '@chakra-ui/react';
-import { CircleAlert, CircleCheck, Info, Pause, Play, TriangleAlert } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CircleAlert, CircleCheck, Info, Pause, Play, RotateCcw, TriangleAlert } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { COLORS } from '../export/svg';
+import { clearSteps } from '../geometry/faces';
+import { stepCount } from '../geometry/fold';
 import { useStore } from '../store';
+import { useDieline } from '../useDieline';
 import type { Issue, Severity } from '../verify/checks';
 import { useChecks } from '../verify/useChecks';
 import { Check, NumField, Section } from './ui';
@@ -17,20 +20,28 @@ const SEV: Record<Severity, { icon: typeof Info; color: string; bg: string; labe
 export function VerifyProps() {
   const s = useStore();
   const issues = useChecks();
+  const { dieline } = useDieline();
+  const steps = stepCount(dieline.faces);
+  const stepFaces = Array.from({ length: steps }, (_, i) => dieline.faces.filter((f) => f.step === i + 1));
+  const current = s.fold <= 0 ? 0 : Math.min(steps, Math.ceil(s.fold * steps - 1e-6));
+  const manual = Object.values(s.doc.graph.e).some((e) => e.step);
+  const goStep = (k: number) => { setPlaying(false); s.setFold(steps ? Math.max(0, Math.min(steps, k)) / steps : 0); };
   const [playing, setPlaying] = useState(false);
   const raf = useRef(0);
 
   // anima planificado → montado → planificado
   useEffect(() => {
     if (!playing) return;
-    const start = performance.now() - useStore.getState().fold * 2000;
+    const per = 1200 * Math.max(1, steps);
+    const start = performance.now() - useStore.getState().fold * per;
     const tick = (now: number) => {
-      const t = ((now - start) % 4000) / 2000;
+      const t = ((now - start) % (2 * per)) / per;
       useStore.getState().setFold(t <= 1 ? t : 2 - t);
       raf.current = requestAnimationFrame(tick);
     };
     raf.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playing]);
 
   const open = (i: Issue) => {
@@ -48,7 +59,14 @@ export function VerifyProps() {
 
   return (
     <>
-      <Section title="Dobra">
+      <Section
+        title="Montagem passo a passo"
+        action={manual && (
+          <Button size="2xs" variant="ghost" onClick={() => s.commit({ graph: clearSteps(s.doc.graph) })} title="Volta para a ordem sugerida automaticamente">
+            <RotateCcw size={12} /> Ordem automática
+          </Button>
+        )}
+      >
         <Flex gap={3} align="center">
           <Button size="sm" variant="outline" onClick={() => setPlaying((p) => !p)} aria-label={playing ? 'Pausar' : 'Animar'}>
             {playing ? <Pause size={16} /> : <Play size={16} />}
@@ -67,9 +85,45 @@ export function VerifyProps() {
             </Slider.Control>
           </Slider.Root>
         </Flex>
-        <Flex justify="space-between" fontSize="xs" color="gray.500" mt={2}>
-          <span>Planificado</span><span>{Math.round(s.fold * 100)}%</span><span>Montado</span>
+        <Flex justify="space-between" align="center" fontSize="xs" color="gray.500" mt={2}>
+          <Button size="2xs" variant="ghost" disabled={current <= 0} onClick={() => goStep(current - 1)} aria-label="Etapa anterior"><ChevronLeft size={14} /></Button>
+          <Text fontWeight="600" color="gray.700">{current === 0 ? 'Planificado' : `Etapa ${current} de ${steps}`}</Text>
+          <Button size="2xs" variant="ghost" disabled={current >= steps} onClick={() => goStep(current + 1)} aria-label="Próxima etapa"><ChevronRight size={14} /></Button>
         </Flex>
+        <Stack gap={1} mt={3}>
+          {stepFaces.map((fs, i) => {
+            const k = i + 1;
+            const state = k < current || (k === current && s.fold * steps >= k - 1e-6) ? 'done' : k === current ? 'doing' : 'todo';
+            return (
+              <Flex
+                key={k}
+                as="button"
+                gap={2}
+                align="flex-start"
+                textAlign="left"
+                p={2}
+                borderRadius="md"
+                fontSize="xs"
+                bg={k === current ? 'red.50' : undefined}
+                borderWidth="1px"
+                borderColor={k === current ? 'red.200' : 'transparent'}
+                _hover={{ bg: k === current ? 'red.50' : 'gray.50' }}
+                onClick={() => goStep(k)}
+              >
+                <Box
+                  w="20px" h="20px" flexShrink={0} borderRadius="full" display="grid" placeItems="center" fontWeight="700" fontSize="2xs"
+                  bg={state === 'todo' ? 'gray.100' : 'red.500'} color={state === 'todo' ? 'gray.600' : 'white'}
+                >
+                  {k}
+                </Box>
+                <Text color="gray.700" pt="2px">{fs.map((f) => f.name).join(', ')}</Text>
+              </Flex>
+            );
+          })}
+        </Stack>
+        <Text fontSize="xs" color="gray.500" mt={2}>
+          Clique numa etapa para ver a caixa até ali. Para mudar a ordem, selecione o vinco no modo Estrutura.
+        </Text>
       </Section>
 
       <Section title="Verificação">

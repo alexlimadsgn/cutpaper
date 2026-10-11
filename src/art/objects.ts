@@ -140,7 +140,7 @@ export function objectToSvg(o: ArtObject): string {
         return `<g fill="${o.fill ? esc(o.fill) : 'none'}"${o.stroke ? ` stroke="${esc(o.stroke)}" stroke-width="${n(o.strokeWidth)}"` : boldStroke}${op}${tr}>${paths}</g>`;
       }
       const spans = t.lines.map((l, i) => `<tspan x="${n(t.x)}" y="${n(t.y0 + i * t.lh)}">${esc(l) || ' '}</tspan>`).join('');
-      return `<text font-family="${esc(o.font ?? 'Poppins')}" font-size="${n(t.size)}" font-weight="${o.bold ? 700 : 400}" font-style="${o.italic ? 'italic' : 'normal'}" text-anchor="${t.anchor}" ${paint}${op}${tr}>${spans}</text>`;
+      return `<text font-family="${esc(o.font ?? 'Poppins')}" font-size="${n(t.size)}" style="font-size:${n(t.size)}px" font-weight="${o.bold ? 700 : 400}" font-style="${o.italic ? 'italic' : 'normal'}" text-anchor="${t.anchor}" ${paint}${op}${tr}>${spans}</text>`;
     }
   }
 }
