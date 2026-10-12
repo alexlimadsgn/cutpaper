@@ -47,8 +47,11 @@ const area = (p: Vec2[]) => p.reduce((s, a, i) => { const b = p[(i + 1) % p.leng
  */
 export function bleedOutline(outline: Vec2[][], bleed: number, miterLimit = 4): Vec2[][] {
   if (bleed <= 0) return outline;
+  // A orientação vem do contorno externo (o de maior área). Furos têm orientação oposta,
+  // então a mesma regra empurra a sangria para dentro do vazio (o furo encolhe), como deve ser.
+  const outer = outline.reduce((m, p) => (Math.abs(area(p)) > Math.abs(area(m)) ? p : m), outline[0] ?? []);
+  const sign = area(outer) > 0 ? 1 : -1;
   const raw = outline.map((poly) => {
-    const sign = area(poly) > 0 ? 1 : -1; // normal "para fora" depende da orientação
     const n = poly.length;
     const out: Vec2[] = [];
     for (let i = 0; i < n; i++) {
@@ -88,3 +91,19 @@ export function bounds(polys: Vec2[][]) {
 
 export const polyToPath = (polys: Vec2[][]) =>
   polys.map((p) => 'M' + p.map(([x, y]) => `${+x.toFixed(3)} ${+y.toFixed(3)}`).join(' L') + ' Z').join(' ');
+
+/**
+ * Área de arte de cada face: a própria face + a faixa de sangria dos seus lados de CORTE
+ * (bordas externas e furos). Nos lados de vinco a arte não avança, para não invadir a vizinha.
+ */
+export function faceArtRegions(d: Dieline, bleedPolys: Vec2[][], bleed: number): Vec2[][][] {
+  if (bleed <= 0 || !bleedPolys.length) return d.faces.map((f) => [f.poly, ...f.holes]);
+  const area = toPaths(bleedPolys);
+  return d.faces.map((f, i) => {
+    const grown = Clipper.Intersect(toPaths(bleedOutline([f.poly], bleed)), area, FillRule.NonZero);
+    const others = d.faces.filter((_, j) => j !== i).map((o) => o.poly);
+    const region = others.length ? Clipper.Difference(grown, toPaths(others), FillRule.NonZero) : grown;
+    const out = fromPaths(region).filter((p) => p.length >= 3);
+    return out.length ? out : [f.poly, ...f.holes];
+  });
+}
