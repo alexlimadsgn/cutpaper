@@ -1,13 +1,61 @@
-import { Button, Flex, Group, IconButton, Input, NativeSelect, SimpleGrid, Slider, Stack, Text, Textarea } from '@chakra-ui/react';
+import { Box, Button, Flex, Group, IconButton, Input, NativeSelect, SimpleGrid, Slider, Stack, Text, Textarea } from '@chakra-ui/react';
 import {
-  AlignCenter, AlignLeft, AlignRight, ArrowDownToLine, ArrowUpToLine, Bold, ChevronDown, ChevronUp, Copy, Italic, Trash2,
+  AlignCenter, AlignLeft, AlignRight, ArrowDownToLine, ArrowUpToLine, Bold, ChevronDown, ChevronUp, Copy, Italic, Minus, Move, Plus, Trash2,
 } from 'lucide-react';
 import { FONTS } from '../art/fonts';
-import type { ArtObject } from '../art/objects';
+import { imageRect, toWorld, type ArtObject } from '../art/objects';
 import { useStore } from '../store';
 import { useDieline } from '../useDieline';
 import { ColorField } from './ColorField';
 import { NumField, Section, pickImage } from './ui';
+
+/** Corte da imagem (máscara não destrutiva): ajustar, preencher, imagem inteira e zoom. */
+function ImageCrop({ o }: { o: ArtObject }) {
+  const s = useStore();
+  const c = imageRect(o);
+  const editing = s.cropEdit === o.id;
+  // zoom em torno do centro da moldura
+  const zoom = (f: number) => {
+    const cx = o.w / 2, cy = o.h / 2;
+    s.updateObject(o.id, { crop: { x: cx - (cx - c.x) * f, y: cy - (cy - c.y) * f, w: c.w * f, h: c.h * f } });
+  };
+  // preencher: a imagem cobre a moldura inteira, centralizada, sem distorcer
+  const fill = () => {
+    const k = Math.max(o.w / c.w, o.h / c.h);
+    const w = c.w * k, h = c.h * k;
+    s.updateObject(o.id, { crop: { x: (o.w - w) / 2, y: (o.h - h) / 2, w, h } });
+  };
+  // imagem inteira: a moldura volta a ser o retângulo da imagem
+  const reset = () => {
+    const [cx, cy] = toWorld(o, [-o.w / 2 + c.x + c.w / 2, -o.h / 2 + c.y + c.h / 2]);
+    s.updateObject(o.id, { x: cx - c.w / 2, y: cy - c.h / 2, w: c.w, h: c.h, crop: undefined });
+    s.setCropEdit(undefined);
+  };
+  return (
+    <Box borderWidth="1px" borderColor="gray.200" borderRadius="md" p={3}>
+      <Text fontSize="xs" fontWeight="600" color="gray.700" mb={1}>Corte da imagem</Text>
+      <Text fontSize="2xs" color="gray.500" mb={2}>
+        Alças do meio cortam; cantos escalam. Duplo clique na imagem para reposicioná-la dentro do corte.
+      </Text>
+      <Stack gap={2}>
+        <Button size="xs" colorPalette={editing ? 'blue' : 'gray'} variant={editing ? 'solid' : 'outline'} onClick={() => s.setCropEdit(editing ? undefined : o.id)}>
+          <Move size={13} /> {editing ? 'Concluir ajuste' : 'Ajustar posição no corte'}
+        </Button>
+        <Flex gap={2}>
+          <Button flex={1} size="xs" variant="outline" onClick={fill} title="A imagem cobre todo o corte, sem distorcer">Preencher</Button>
+          <Button flex={1} size="xs" variant="outline" onClick={reset} disabled={!o.crop} title="Desfaz o corte e mostra a imagem inteira">Imagem inteira</Button>
+        </Flex>
+        <Flex gap={2} align="center">
+          <Text fontSize="xs" color="gray.600" flex={1}>Zoom da imagem</Text>
+          <Group attached>
+            <IconButton size="xs" variant="outline" aria-label="Diminuir" onClick={() => zoom(1 / 1.1)}><Minus size={12} /></IconButton>
+            <IconButton size="xs" variant="outline" aria-label="Aumentar" onClick={() => zoom(1.1)}><Plus size={12} /></IconButton>
+          </Group>
+        </Flex>
+      </Stack>
+    </Box>
+  );
+}
 
 const TYPE_LABEL = { rect: 'Retângulo', ellipse: 'Elipse', text: 'Texto', image: 'Imagem' };
 
@@ -82,7 +130,10 @@ export function ObjectProps({ o }: { o: ArtObject }) {
       <Section title="Aparência">
         <Stack gap={5}>
           {o.type === 'image' ? (
-            <Button size="sm" variant="outline" onClick={() => pickImage((src) => up({ src }))}>Trocar imagem</Button>
+            <Stack gap={2}>
+              <Button size="sm" variant="outline" onClick={() => pickImage((src) => up({ src }))}>Trocar imagem</Button>
+              <ImageCrop o={o} />
+            </Stack>
           ) : (
             <ColorField label={o.type === 'text' ? 'Cor do texto' : 'Preenchimento'} value={o.fill} onChange={(fill) => up({ fill })} />
           )}

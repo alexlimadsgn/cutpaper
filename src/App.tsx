@@ -14,10 +14,10 @@ import { insertImageObject } from './art/insertImage';
 import { useFontLoader } from './art/useFontLoader';
 import { ensureFonts } from './art/fonts';
 import { buildPdf } from './export/pdf';
-import { buildSvg, download } from './export/svg';
+import { buildBackSvg, buildSvg, download } from './export/svg';
 import { openProjectFile, saveProjectFile } from './io/project';
 import { openSvgFile } from './io/openSvg';
-import { useStore } from './store';
+import { hasInterior, useStore } from './store';
 import { useDieline } from './useDieline';
 import { useChecks } from './verify/useChecks';
 
@@ -55,6 +55,13 @@ function TopBar() {
     try {
       await ensureFonts(s.doc.objects);
       download(`caixa-${stamp()}.svg`, buildSvg({ ...input(), layers: s.layers }));
+    } finally { setBusy(null); }
+  };
+  const exportBackSvg = async () => {
+    setBusy('svg');
+    try {
+      await ensureFonts(s.doc.objects);
+      download(`caixa-${stamp()}-verso.svg`, buildBackSvg({ dieline, bleed: s.bleed, art: s.interior, objects: s.doc.objects }));
     } finally { setBusy(null); }
   };
   const exportPdf = async () => {
@@ -138,6 +145,15 @@ function TopBar() {
                     <Text fontSize="xs" color="gray.500">Camadas · texto em contornos</Text>
                   </Box>
                 </Menu.Item>
+                {hasInterior(s) && (
+                  <Menu.Item value="svg-back" onSelect={exportBackSvg}>
+                    <FileCode size={15} />
+                    <Box>
+                      <Text fontWeight="600">SVG do verso (interior)</Text>
+                      <Text fontSize="xs" color="gray.500">Espelhado para frente e verso</Text>
+                    </Box>
+                  </Menu.Item>
+                )}
               </Menu.Content>
             </Menu.Positioner>
           </Portal>

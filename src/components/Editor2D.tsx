@@ -1,7 +1,8 @@
 import { Box, Button, Group, IconButton, Text } from '@chakra-ui/react';
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from 'react';
-import { center, createObject, objectToSvg, toLocal, toWorld, type ArtObject, type ArtType } from '../art/objects';
+import { center, createObject, imageRect, objectToSvg, toLocal, toWorld, type ArtObject, type ArtType } from '../art/objects';
 import { buildArt, COLORS, objectClip } from '../export/svg';
+import { sideArt } from '../store';
 import { faceAt, flapIds } from '../geometry/faces';
 import {
   addSegments, deleteEdges, deleteVertices, moveVertices, normalize, setEdgeLength, splitEdge, type Graph,
@@ -20,6 +21,7 @@ type Interaction =
   | { kind: 'obj-move'; base: ArtObject; start: Vec2; moved: boolean }
   | { kind: 'obj-resize'; base: ArtObject; hx: number; hy: number; moved: boolean }
   | { kind: 'obj-rotate'; base: ArtObject; moved: boolean }
+  | { kind: 'obj-pan'; base: ArtObject; start: Vec2; moved: boolean }
   | { kind: 'obj-create'; type: ArtType; start: Vec2; cur: Vec2; face?: string };
 
 interface Snap {
@@ -36,7 +38,12 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
   const { dieline, material, bleedPolys, conflicts, viewBox: fitBox } = useDieline();
   const bad = new Set(conflicts.map((c) => c.face));
   const s = useStore();
-  const { graph, objects } = s.doc;
+  const { graph } = s.doc;
+  // Interior (verso): a planificação aparece espelhada, como ao virar a folha; só os objetos do verso
+  const back = s.mode === 'art' && s.artSide === 'in' && !compact;
+  const mx = back ? -1 : 1;
+  const toPaper = (p: Vec2): Vec2 => [p[0] * mx, p[1]];
+  const objects = s.doc.objects.filter((o) => (o.side === 'in') === back);
   // fora do modo Edição (ou na miniatura) o molde fica travado: só faces são clicáveis
   const editable = s.mode === 'structure' && !compact;
   const artMode = s.mode === 'art' && !compact;
@@ -75,9 +82,15 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
   const fit = useCallback(() => {
     if (!size.w || !size.h) return;
     const scale = Math.min(size.w / fitBox[2], size.h / fitBox[3]) * 0.9;
-    setView({ cx: fitBox[0] + fitBox[2] / 2, cy: fitBox[1] + fitBox[3] / 2, scale });
+    setView({ cx: (fitBox[0] + fitBox[2] / 2) * mx, cy: fitBox[1] + fitBox[3] / 2, scale });
   }, [size, fitBox]);
   useEffect(() => { if (!view && size.w) fit(); }, [view, size, fit]);
+  // trocar exterior/interior espelha o centro da vista (o molde continua enquadrado)
+  const prevBack = useRef(back);
+  useEffect(() => {
+    if (prevBack.current !== back) setView((cur) => cur && { ...cur, cx: -cur.cx });
+    prevBack.current = back;
+  }, [back]);
   // molde substituído (importação/novo modelo): reenquadra
   useEffect(() => { setView(null); }, [s.fitToken]);
 
@@ -167,7 +180,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
     const [cx, cy] = center(o);
     let bx: number | undefined, by: number | undefined, dx = r, dy = r;
     for (const f of dieline.faces) {
-      const xs = f.poly.map((q) => q[0]), ys = f.poly.map((q) => q[1]);
+      const xs = f.poly.map((q) => q[0] * mx), ys = f.poly.map((q) => q[1]);
       const fx = [Math.min(...xs), (Math.min(...xs) + Math.max(...xs)) / 2, Math.max(...xs)];
       const fy = [Math.min(...ys), (Math.min(...ys) + Math.max(...ys)) / 2, Math.max(...ys)];
       // alinha centro, borda esquerda/superior ou direita/inferior do objeto
@@ -202,11 +215,26 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
     const [cx, cy] = toWorld(o, [(left + right) / 2, (top + bottom) / 2]);
     const patch: Partial<ArtObject> = { x: cx - w / 2, y: cy - h / 2, w, h };
     if (o.type === 'text') patch.fontSize = +((o.fontSize ?? 12) * (h / o.h)).toFixed(2);
+    if (o.type === 'image') {
+      const c = imageRect(o);
+      if (hx && hy) {
+        // cantos: escala moldura e imagem juntas
+        const kx = w / o.w, ky = h / o.h;
+        patch.crop = o.crop ? { x: c.x * kx, y: c.y * ky, w: c.w * kx, h: c.h * ky } : undefined;
+      } else {
+        // lados: corta (só a moldura anda; a imagem fica parada no lugar)
+        patch.crop = { x: -o.w / 2 + c.x - left, y: -o.h / 2 + c.y - top, w: c.w, h: c.h };
+      }
+    }
     return patch;
   };
 
   // ---------- ponteiro ----------
+  /** Alvo real do último clique (com a captura do ponteiro, o dblclick chega com o <svg> como alvo). */
+  const lastDown = useRef<Element | null>(null);
+
   const onPointerDown = (e: RPointerEvent<SVGSVGElement>) => {
+    lastDown.current = e.target as Element;
     svgRef.current!.setPointerCapture(e.pointerId);
     const p = toMM(e.clientX, e.clientY);
     if (e.button === 1 || space) {
@@ -217,11 +245,11 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
 
     if (artMode && (s.tool === 'rect' || s.tool === 'ellipse')) {
       const start = snapGrid(p);
-      act.current = { kind: 'obj-create', type: s.tool, start, cur: start, face: faceAt(dieline, p)?.id };
+      act.current = { kind: 'obj-create', type: s.tool, start, cur: start, face: faceAt(dieline, toPaper(p))?.id };
       return;
     }
     if (artMode && s.tool === 'text') {
-      s.addObject(createObject('text', { x: p[0], y: p[1], w: 0, h: 0 }, { clip: faceAt(dieline, p)?.id }));
+      s.addObject(createObject('text', { x: p[0], y: p[1], w: 0, h: 0 }, { clip: faceAt(dieline, toPaper(p))?.id }));
       return;
     }
 
@@ -260,6 +288,13 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
       }
       if (kind === 'obj-rot' && selObj) {
         act.current = { kind: 'obj-rotate', base: selObj, moved: false };
+        s.beginDrag();
+        return;
+      }
+      if (kind === 'object' && id && s.cropEdit === id) {
+        // ajuste no corte: arrastar move a imagem dentro da moldura
+        const o = objects.find((x) => x.id === id)!;
+        act.current = { kind: 'obj-pan', base: o, start: p, moved: false };
         s.beginDrag();
         return;
       }
@@ -338,6 +373,14 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
       } else [nx, ny] = snapObject({ ...a.base, x: nx, y: ny });
       a.moved ||= Math.hypot(nx - a.base.x, ny - a.base.y) > 1e-6;
       s.setObjectLive(a.base.id, { x: nx, y: ny });
+    } else if (a.kind === 'obj-pan') {
+      // deslocamento no referencial da moldura (respeita a rotação)
+      const r = (-a.base.rotation * Math.PI) / 180;
+      const dx = p[0] - a.start[0], dy = p[1] - a.start[1];
+      const lx = dx * Math.cos(r) - dy * Math.sin(r), ly = dx * Math.sin(r) + dy * Math.cos(r);
+      const c = imageRect(a.base);
+      a.moved = true;
+      s.setObjectLive(a.base.id, { crop: { ...c, x: c.x + lx, y: c.y + ly } });
     } else if (a.kind === 'obj-resize') {
       a.moved = true;
       s.setObjectLive(a.base.id, resizeBox(a.base, a.hx, a.hy, p, e.shiftKey));
@@ -382,7 +425,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
     act.current = null;
     if (!a) return;
     setDragGuides([]);
-    if (a.kind === 'drag' || a.kind === 'obj-move' || a.kind === 'obj-resize' || a.kind === 'obj-rotate') s.endDrag(a.moved);
+    if (a.kind === 'drag' || a.kind === 'obj-move' || a.kind === 'obj-resize' || a.kind === 'obj-rotate' || a.kind === 'obj-pan') s.endDrag(a.moved);
     if (a.kind === 'obj-create') {
       setCreating(null);
       const w = Math.abs(a.cur[0] - a.start[0]), h = Math.abs(a.cur[1] - a.start[1]);
@@ -411,14 +454,18 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
 
   const onDoubleClick = (e: React.MouseEvent<SVGSVGElement>) => {
     if (artMode) {
-      // duplo clique num texto leva o foco para o campo de conteúdo no painel
-      if ((e.target as Element).getAttribute('data-kind') === 'object')
-        setTimeout(() => (document.getElementById('art-text-input') as HTMLTextAreaElement | null)?.focus(), 0);
+      const t = lastDown.current ?? (e.target as Element);
+      if (t.getAttribute('data-kind') === 'object') {
+        const o = objects.find((x) => x.id === t.getAttribute('data-id'));
+        // imagem: entra/sai do ajuste no corte; texto: foco no campo de conteúdo
+        if (o?.type === 'image') s.setCropEdit(s.cropEdit === o.id ? undefined : o.id);
+        else setTimeout(() => (document.getElementById('art-text-input') as HTMLTextAreaElement | null)?.focus(), 0);
+      }
       return;
     }
     if (!editable) return;
     if (isLineTool) return setDraw({ start: null, hover: null });
-    const target = e.target as Element;
+    const target = lastDown.current ?? (e.target as Element);
     if (target.getAttribute('data-kind') !== 'edge') return;
     const { g, vid } = splitEdge(graph, target.getAttribute('data-id')!, toMM(e.clientX, e.clientY));
     s.commit({ graph: g });
@@ -449,7 +496,10 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
         if (mod && e.key.toLowerCase() === 'd' && o) { e.preventDefault(); return st.duplicateObject(o.id); }
         if (mod) return;
         switch (e.key) {
-          case 'Escape': st.select({}); st.setTool('select'); return;
+          case 'Escape':
+            if (st.cropEdit) return st.setCropEdit(undefined);
+            st.select({}); st.setTool('select'); return;
+          case 'Enter': if (st.cropEdit) st.setCropEdit(undefined); return;
           case 'Delete': case 'Backspace': if (o) st.deleteObject(o.id); return;
           case 'v': case 'V': return st.setTool('select');
           case 'r': case 'R': return st.setTool('rect');
@@ -520,9 +570,9 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
   const frozen = useRef({ dieline, bleedPolys });
   if (!s.dragging) frozen.current = { dieline, bleedPolys };
   const art = useMemo(
-    () => buildArt(frozen.current.dieline, frozen.current.bleedPolys, s, 'ed'),
+    () => buildArt(frozen.current.dieline, frozen.current.bleedPolys, { ...sideArt(s, back ? 'in' : 'out'), bleed: s.bleed, mirror: back }, 'ed'),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [frozen.current, s.fullImage, s.faceImages, s.faceColors, s.bgColor],
+    [frozen.current, s.fullImage, s.faceImages, s.faceColors, s.bgColor, s.interior, s.bleed, back],
   );
 
   const selV = new Set(s.sel.vertices), selE = new Set(s.sel.edges);
@@ -605,13 +655,27 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
           </>
         )}
 
-        <path d={polyToPath(material)} fill="white" fillRule="evenodd" pointerEvents="none" />
+        <path d={polyToPath(material)} fill="white" fillRule="evenodd" pointerEvents="none" transform={back ? 'scale(-1 1)' : undefined} />
         {s.layers.artwork && <g pointerEvents="none" dangerouslySetInnerHTML={{ __html: art.body }} />}
+        {/* ajuste no corte: a parte escondida da imagem aparece translúcida */}
+        {artMode && (() => {
+          const o = objects.find((x) => x.id === s.cropEdit && x.type === 'image');
+          if (!o?.src) return null;
+          const c = imageRect(o);
+          const [cx, cy] = center(o);
+          return (
+            <g transform={`rotate(${o.rotation} ${cx} ${cy})`} pointerEvents="none">
+              <image href={o.src} x={o.x + c.x} y={o.y + c.y} width={c.w} height={c.h} preserveAspectRatio="none" opacity={0.35} />
+              <rect x={o.x + c.x} y={o.y + c.y} width={c.w} height={c.h} fill="none" stroke="#3B82F6" strokeWidth={1} strokeDasharray="4 3" vectorEffect="non-scaling-stroke" />
+            </g>
+          );
+        })()}
         {/* objetos: um <g> por objeto, assim só o que mudou é redesenhado */}
         {s.layers.artwork &&
           objects.map((o) => (
             <g key={o.id} pointerEvents="none" clipPath={`url(#${objectClip('ed', dieline, o)})`} dangerouslySetInnerHTML={{ __html: objectToSvg(o) }} />
           ))}
+        <g transform={back ? 'scale(-1 1)' : undefined}>
         {s.layers.bleed && s.bleed > 0 && (
           <path d={polyToPath(bleedPolys)} fill="none" stroke={COLORS.bleed} strokeWidth={1} strokeDasharray="4 3" vectorEffect="non-scaling-stroke" pointerEvents="none" />
         )}
@@ -631,6 +695,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
             <title>{f.name}</title>
           </path>
         ))}
+        </g>
 
         {artMode && s.tool === 'select' &&
           objects.filter((o) => !o.hidden).map((o) => {
@@ -640,13 +705,14 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
                 key={o.id} data-kind="object" data-id={o.id}
                 x={o.x} y={o.y} width={o.w} height={o.h}
                 transform={`rotate(${o.rotation} ${cx} ${cy})`}
-                fill="transparent" style={{ cursor: 'move' }}
+                fill="transparent" style={{ cursor: s.cropEdit === o.id ? 'grab' : 'move' }}
               >
                 <title>{o.name}</title>
               </rect>
             );
           })}
 
+        <g transform={back ? 'scale(-1 1)' : undefined}>
         {Object.entries(graph.e).map(([id, e]) => {
           const A = graph.v[e.a], B = graph.v[e.b];
           const visible = e.type === 'cut' ? s.layers.cut : s.layers.crease;
@@ -668,6 +734,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
             </g>
           );
         })}
+        </g>
 
         {dims.map((d) => {
           const label = `${(+d.len.toFixed(1)).toString().replace('.', ',')}`;
@@ -727,10 +794,13 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
               {[-1, 0, 1].flatMap((hy) => [-1, 0, 1].map((hx) => {
                 if (!hx && !hy) return null;
                 const x = cx + (hx * selObj.w) / 2, y = cy + (hy * selObj.h) / 2;
+                // imagem: alças do meio são "barras" de corte; cantos escalam
+                const bar = selObj.type === 'image' && (!hx || !hy);
+                const bw = bar ? (hx ? 2.5 * px : 8 * px) : hs, bh = bar ? (hx ? 8 * px : 2.5 * px) : hs;
                 return (
                   <rect
                     key={`${hx},${hy}`} data-kind="obj-handle" data-h={`${hx},${hy}`}
-                    x={x - hs} y={y - hs} width={hs * 2} height={hs * 2}
+                    x={x - bw} y={y - bh} width={bw * 2} height={bh * 2} rx={bar ? 2.5 * px : 0}
                     fill="white" stroke="#B45309" strokeWidth={1} vectorEffect="non-scaling-stroke"
                     style={{ cursor: hx && hy ? (hx === hy ? 'nwse-resize' : 'nesw-resize') : hx ? 'ew-resize' : 'ns-resize' }}
                   />
@@ -823,6 +893,11 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
       {editable && isLineTool && (
         <Text position="absolute" top={3} left="50%" transform="translateX(-50%)" fontSize="xs" bg="white" px={3} py={1} borderRadius="full" shadow="sm" color="gray.600">
           Clique para desenhar {s.tool === 'cut' ? 'corte' : 'vinco'} · Shift = 45° · Esc/duplo clique encerra
+        </Text>
+      )}
+      {artMode && s.cropEdit && (
+        <Text position="absolute" top={3} left="50%" transform="translateX(-50%)" fontSize="xs" bg="blue.600" color="white" px={3} py={1} borderRadius="full" shadow="sm" zIndex={2}>
+          Ajustando a imagem no corte: arraste para posicionar · Enter ou Esc conclui
         </Text>
       )}
       {artMode && s.tool !== 'select' && (

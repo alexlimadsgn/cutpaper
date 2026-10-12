@@ -8,7 +8,8 @@ import { useImageSizes } from './useImageSizes';
 export function useChecks() {
   const { dieline, conflicts } = useDieline();
   const s = useStore();
-  const { objects, graph } = s.doc;
+  const { graph } = s.doc;
+  const objects = useMemo(() => s.doc.objects.filter((o) => o.side !== 'in'), [s.doc.objects]);
   const srcs = [
     ...objects.filter((o) => o.type === 'image' && o.src).map((o) => o.src!),
     ...Object.values(s.faceImages),

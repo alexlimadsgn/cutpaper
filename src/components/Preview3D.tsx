@@ -1,50 +1,69 @@
 import { Line, OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { buildSvg } from '../export/svg';
+import { buildBackSvg, buildSvg } from '../export/svg';
 import { centroid } from '../geometry/faces';
 import { foldMatrices } from '../geometry/fold';
-import { useStore } from '../store';
+import { hasInterior, useStore } from '../store';
 import { useDieline } from '../useDieline';
 
 const MM = 0.01; // 100 mm = 1 unidade
 
-/** Rasteriza a arte (mesmo SVG do export) numa textura para o 3D. */
-function useArtTexture() {
-  const { dieline, viewBox } = useDieline();
-  const { bleed, fullImage, faceImages, faceColors, bgColor, dragging } = useStore();
-  const objects = useStore((s) => s.doc.objects);
-  const fontsVersion = useStore((s) => s.fontsVersion);
+/** Rasteriza um SVG numa textura; `flip` espelha na horizontal (verso → referencial da frente). */
+function useSvgTexture(svg: string | undefined, viewBox: number[], flip: boolean) {
   const [texture, setTexture] = useState<THREE.Texture>();
-
   useEffect(() => {
-    if (dragging) return; // a textura é refeita ao soltar
-    const svg = buildSvg({
-      dieline, bleed, fullImage, faceImages, faceColors, bgColor, objects, background: '#ffffff',
-      layers: { artwork: true, bleed: false, cut: false, crease: false },
-    });
+    if (!svg) { setTexture((old) => (old?.dispose(), undefined)); return; }
     const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
     const img = new Image();
     let cancelled = false;
     img.onload = () => {
+      URL.revokeObjectURL(url);
       if (cancelled) return;
       const pxPerMm = Math.min(8, 4096 / Math.max(viewBox[2], viewBox[3]));
       const canvas = document.createElement('canvas');
       canvas.width = Math.round(viewBox[2] * pxPerMm);
       canvas.height = Math.round(viewBox[3] * pxPerMm);
-      canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const ctx = canvas.getContext('2d')!;
+      if (flip) { ctx.translate(canvas.width, 0); ctx.scale(-1, 1); }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       const tex = new THREE.CanvasTexture(canvas);
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.anisotropy = 8;
       setTexture((old) => (old?.dispose(), tex));
-      URL.revokeObjectURL(url);
     };
     img.src = url;
     return () => { cancelled = true; };
-  }, [dieline, bleed, fullImage, faceImages, faceColors, bgColor, objects, viewBox, dragging, fontsVersion]);
-
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [svg, flip, viewBox.join(',')]);
   return texture;
+}
+
+/** Texturas da arte: exterior (frente do papel) e interior (verso), com o mesmo SVG do export. */
+function useArtTextures() {
+  const { dieline, viewBox } = useDieline();
+  const s = useStore();
+  const { bleed, fullImage, faceImages, faceColors, bgColor, dragging, interior, fontsVersion } = s;
+  const objects = s.doc.objects;
+  const inside = hasInterior(s);
+  const svgs = useMemo(() => {
+    if (dragging) return null; // a textura é refeita ao soltar
+    return {
+      out: buildSvg({
+        dieline, bleed, fullImage, faceImages, faceColors, bgColor, objects, background: '#ffffff',
+        layers: { artwork: true, bleed: false, cut: false, crease: false },
+      }),
+      in: inside ? buildBackSvg({ dieline, bleed, art: interior, objects, guides: false, background: '#f1efe9' }) : undefined,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dieline, bleed, fullImage, faceImages, faceColors, bgColor, objects, interior, inside, dragging, fontsVersion]);
+  const last = useRef(svgs);
+  if (svgs) last.current = svgs;
+  return {
+    outside: useSvgTexture(last.current?.out, viewBox, false),
+    inside: useSvgTexture(last.current?.in, viewBox, true),
+  };
 }
 
 function Box3D() {
@@ -72,7 +91,7 @@ function Box3D() {
     }
     return out;
   }, [sel.edges, graph, dieline]);
-  const texture = useArtTexture();
+  const { outside: texture, inside: insideTex } = useArtTextures();
 
   const geometries = useMemo(
     () =>
@@ -121,7 +140,7 @@ function Box3D() {
               <meshStandardMaterial key={texture?.uuid} map={texture ?? null} color={bad.has(id) ? '#fca5a5' : '#ffffff'} emissive={selected ? '#f59e0b' : '#000000'} emissiveIntensity={selected ? 0.55 : 0} side={THREE.BackSide} roughness={0.8} />
             </mesh>
             <mesh geometry={geo} onClick={(e) => { if (e.delta > 4) return; e.stopPropagation(); select({ face: id }); }}>
-              <meshStandardMaterial color={bad.has(id) ? '#ef4444' : '#f1efe9'} emissive={selected ? '#f59e0b' : '#000000'} emissiveIntensity={selected ? 0.55 : 0} side={THREE.FrontSide} roughness={0.9} />
+              <meshStandardMaterial key={insideTex?.uuid ?? 'plain'} map={insideTex ?? null} color={bad.has(id) ? '#ef4444' : insideTex ? '#ffffff' : '#f1efe9'} emissive={selected ? '#f59e0b' : '#000000'} emissiveIntensity={selected ? 0.55 : 0} side={THREE.FrontSide} roughness={0.9} />
             </mesh>
             <lineSegments>
               <edgesGeometry args={[geo]} />

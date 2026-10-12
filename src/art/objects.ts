@@ -32,8 +32,22 @@ export interface ArtObject {
   align?: 'left' | 'center' | 'right';
   // imagem
   src?: string;
+  /**
+   * Corte não destrutivo da imagem: posição/tamanho da imagem inteira em relação ao canto
+   * da moldura (mm, sem rotação). A moldura (x, y, w, h) é a área visível.
+   * undefined = a imagem ocupa exatamente a moldura.
+   */
+  crop?: { x: number; y: number; w: number; h: number };
   hidden?: boolean;
+  /**
+   * Lado do papel: 'in' = interior (verso). Objetos do verso são guardados no referencial
+   * do verso (X espelhado: x_verso = −x_frente), que é como a folha é vista ao virá-la.
+   */
+  side?: 'out' | 'in';
 }
+
+/** Retângulo da imagem inteira, relativo ao canto da moldura. */
+export const imageRect = (o: ArtObject) => o.crop ?? { x: 0, y: 0, w: o.w, h: o.h };
 
 export const PT_MM = 25.4 / 72;
 export const LINE_HEIGHT = 1.2;
@@ -116,10 +130,14 @@ export function objectToSvg(o: ArtObject): string {
       return `<rect x="${n(o.x)}" y="${n(o.y)}" width="${n(o.w)}" height="${n(o.h)}" rx="${n(o.radius)}" ${paint}${op}${tr}/>`;
     case 'ellipse':
       return `<ellipse cx="${n(cx)}" cy="${n(cy)}" rx="${n(o.w / 2)}" ry="${n(o.h / 2)}" ${paint}${op}${tr}/>`;
-    case 'image':
-      return o.src
-        ? `<image href="${esc(o.src)}" x="${n(o.x)}" y="${n(o.y)}" width="${n(o.w)}" height="${n(o.h)}" preserveAspectRatio="none"${op}${tr}/>`
-        : '';
+    case 'image': {
+      if (!o.src) return '';
+      if (!o.crop)
+        return `<image href="${esc(o.src)}" x="${n(o.x)}" y="${n(o.y)}" width="${n(o.w)}" height="${n(o.h)}" preserveAspectRatio="none"${op}${tr}/>`;
+      // moldura = <svg> aninhado (recorta o que passa dela); a imagem fica inteira dentro
+      const c = o.crop;
+      return `<g${tr}${op}><svg x="${n(o.x)}" y="${n(o.y)}" width="${n(o.w)}" height="${n(o.h)}" overflow="hidden"><image href="${esc(o.src)}" x="${n(c.x)}" y="${n(c.y)}" width="${n(c.w)}" height="${n(c.h)}" preserveAspectRatio="none"/></svg></g>`;
+    }
     case 'text': {
       const t = textLayout(o);
       const lf = getFont(o.font, o.bold, o.italic);

@@ -4,7 +4,7 @@ import { useStore } from '../store';
 /** Campos do estado que formam o projeto salvo. */
 const KEYS = [
   'doc', 'source', 'template', 'params', 'bleed', 'layers', 'fullImage', 'faceImages', 'faceColors', 'bgColor',
-  'grid', 'safeMargin', 'minDpi',
+  'grid', 'safeMargin', 'minDpi', 'interior',
 ] as const;
 
 const AUTOSAVE_KEY = 'cutpaper:autosave';
@@ -23,6 +23,8 @@ export function loadProject(text: string) {
   if (data?.format !== FORMAT || !data.doc?.graph) throw new Error('Este arquivo não é um projeto do CutPaper.');
   const patch: Record<string, unknown> = {};
   for (const k of KEYS) if (k in data) patch[k] = data[k];
+  // projetos antigos não têm interior
+  patch.interior = data.interior ?? { faceColors: {}, faceImages: {} };
   const doc = { objects: [], names: {}, ...data.doc };
   useStore.setState((s) => ({
     ...patch,

@@ -6,7 +6,7 @@ import {
 import { useEffect, useState } from 'react';
 import type { ArtObject } from '../art/objects';
 import type { Face } from '../geometry/types';
-import { useStore } from '../store';
+import { sideArt, useStore } from '../store';
 import { useDieline } from '../useDieline';
 
 const OBJ_ICON = { rect: Square, ellipse: Circle, text: Type, image: ImageIcon };
@@ -39,7 +39,9 @@ export function LayersPanel() {
 
   // objetos por face (o de cima primeiro); sem face válida = molde inteiro
   const objsOf = new Map<string, ArtObject[]>();
-  for (const o of [...s.doc.objects].reverse()) {
+  const back = s.mode === 'art' && s.artSide === 'in';
+  const art = sideArt(s, back ? 'in' : 'out');
+  for (const o of [...s.doc.objects].reverse().filter((x) => (x.side === 'in') === back)) {
     const k = o.clip && faceIds.has(o.clip) ? o.clip : FREE;
     objsOf.set(k, [...(objsOf.get(k) ?? []), o]);
   }
@@ -196,7 +198,7 @@ export function LayersPanel() {
         )}
         {rows.map(({ f, depth }) => {
           const selected = s.sel.face === f.id && !s.sel.object;
-          const color = s.faceColors[f.id];
+          const color = art.faceColors[f.id];
           return (
             <Box key={f.id}>
               <Flex
@@ -219,7 +221,7 @@ export function LayersPanel() {
                 {chevron(f.id)}
                 <Box
                   w="14px" h="14px" flexShrink={0} borderRadius="3px" borderWidth="1px" borderColor="gray.300"
-                  bg={color ?? (s.faceImages[f.id] ? 'gray.200' : 'white')}
+                  bg={color ?? (art.faceImages[f.id] ? 'gray.200' : 'white')}
                 />
                 <Text flex={1} truncate color={bad.has(f.id) ? 'red.600' : 'gray.800'}>{f.name}</Text>
                 {collapsed.has(f.id) && <Text fontSize="2xs" color="gray.400">{count(f.id)}</Text>}

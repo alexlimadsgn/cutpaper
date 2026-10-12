@@ -22,6 +22,27 @@ export interface Doc {
   objects: ArtObject[];
 }
 
+export type ArtSide = 'out' | 'in';
+
+/** Fundos de um lado do papel. */
+export interface SideArt {
+  bgColor?: string;
+  fullImage?: string;
+  faceColors: Record<string, string>;
+  faceImages: Record<string, string>;
+}
+
+const EMPTY_SIDE: SideArt = { faceColors: {}, faceImages: {} };
+
+/** Fundos do lado indicado (exterior = campos de topo do estado, por compatibilidade). */
+export const sideArt = (s: { artSide: ArtSide; interior: SideArt; bgColor?: string; fullImage?: string; faceColors: Record<string, string>; faceImages: Record<string, string> }, side = s.artSide): SideArt =>
+  side === 'in' ? s.interior : { bgColor: s.bgColor, fullImage: s.fullImage, faceColors: s.faceColors, faceImages: s.faceImages };
+
+/** O interior tem alguma arte? */
+export const hasInterior = (s: { interior: SideArt; doc: { objects: { side?: ArtSide }[] } }) =>
+  !!(s.interior.bgColor || s.interior.fullImage || Object.keys(s.interior.faceColors).length ||
+    Object.keys(s.interior.faceImages).length || s.doc.objects.some((o) => o.side === 'in'));
+
 export type Tool = 'select' | 'cut' | 'crease' | 'rect' | 'ellipse' | 'text';
 
 /** Modo de trabalho: desenhar o molde, decorar, ou conferir a montagem. */
@@ -57,6 +78,10 @@ interface State {
   bgColor?: string;
   /** Cor de fundo por face. */
   faceColors: Record<string, string>;
+  /** Lado em que a arte está sendo editada: exterior (frente do papel) ou interior (verso). */
+  artSide: ArtSide;
+  /** Arte do interior (verso do papel); objetos do interior ficam em doc.objects com side = 'in'. */
+  interior: SideArt;
   sel: Selection;
   /** Arrastando vértices: atualizações ao vivo sem histórico. */
   dragging: boolean;
@@ -95,6 +120,7 @@ interface State {
   toggleVerify: () => void;
   setBgColor: (c?: string) => void;
   setFaceColor: (id: string, c?: string) => void;
+  setArtSide: (side: ArtSide) => void;
   setSafeMargin: (v: number) => void;
   setMinDpi: (v: number) => void;
 
@@ -107,6 +133,9 @@ interface State {
   duplicateObject: (id: string) => void;
   reorderObject: (id: string, to: 'up' | 'down' | 'front' | 'back') => void;
   select: (sel: Partial<Selection>) => void;
+  /** Imagem em ajuste dentro do corte (arrastar move a imagem, não a moldura). */
+  cropEdit?: string;
+  setCropEdit: (id?: string) => void;
   setGrid: (v: number) => void;
   setShowDims: (v: boolean) => void;
   reset: () => void;
@@ -148,6 +177,8 @@ export const useStore = create<State>((set, get) => ({
   grid: 1,
   showDims: true,
   fitToken: 0,
+  artSide: 'out',
+  interior: EMPTY_SIDE,
   safeMargin: 3,
   fontsVersion: 0,
   minDpi: 300,
@@ -206,13 +237,14 @@ export const useStore = create<State>((set, get) => ({
   },
   setBleed: (bleed) => set({ bleed }),
   toggleLayer: (k) => set((s) => ({ layers: { ...s.layers, [k]: !s.layers[k] } })),
-  setFullImage: (fullImage) => set({ fullImage }),
+  setFullImage: (fullImage) =>
+    set((s) => (s.artSide === 'in' ? { interior: { ...s.interior, fullImage } } : { fullImage })),
   setFaceImage: (id, url) =>
     set((s) => {
-      const faceImages = { ...s.faceImages };
+      const faceImages = { ...sideArt(s).faceImages };
       if (url) faceImages[id] = url;
       else delete faceImages[id];
-      return { faceImages };
+      return s.artSide === 'in' ? { interior: { ...s.interior, faceImages } } : { faceImages };
     }),
   setFold: (fold) => set({ fold }),
   setTool: (tool) => set({ tool }),
@@ -228,11 +260,14 @@ export const useStore = create<State>((set, get) => ({
     const { mode, lastWorkMode, setMode } = get();
     setMode(mode === 'verify' ? lastWorkMode : 'verify');
   },
-  setBgColor: (bgColor) => set({ bgColor }),
+  setBgColor: (bgColor) => set((s) => (s.artSide === 'in' ? { interior: { ...s.interior, bgColor } } : { bgColor })),
+  setArtSide: (artSide) => set({ artSide, sel: EMPTY_SEL, cropEdit: undefined, tool: 'select' }),
   setSafeMargin: (safeMargin) => set({ safeMargin }),
   setMinDpi: (minDpi) => set({ minDpi }),
 
-  addObject: (o) => {
+  addObject: (o0) => {
+    // objetos criados com o Interior ativo pertencem ao verso
+    const o = get().artSide === 'in' ? { ...o0, side: 'in' as const } : o0;
     get().commit({ objects: [...get().doc.objects, o] });
     set({ sel: { ...EMPTY_SEL, object: o.id }, tool: 'select' });
   },
@@ -264,16 +299,17 @@ export const useStore = create<State>((set, get) => ({
   },
   setFaceColor: (id, c) =>
     set((s) => {
-      const faceColors = { ...s.faceColors };
+      const faceColors = { ...sideArt(s).faceColors };
       if (c) faceColors[id] = c;
       else delete faceColors[id];
-      return { faceColors };
+      return s.artSide === 'in' ? { interior: { ...s.interior, faceColors } } : { faceColors };
     }),
-  select: (sel) => set({ sel: { ...EMPTY_SEL, ...sel } }),
+  select: (sel) => set((s) => ({ sel: { ...EMPTY_SEL, ...sel }, cropEdit: sel.object && sel.object === s.cropEdit ? s.cropEdit : undefined })),
+  setCropEdit: (cropEdit) => set({ cropEdit }),
   setGrid: (grid) => set({ grid }),
   setShowDims: (showDims) => set({ showDims }),
   reset: () => {
-    set({ params: DEFAULT_PARAMS, bleed: 3, fullImage: undefined, faceImages: {}, faceColors: {}, bgColor: undefined, sel: EMPTY_SEL, template: 'lidBox' });
+    set({ params: DEFAULT_PARAMS, bleed: 3, fullImage: undefined, faceImages: {}, faceColors: {}, bgColor: undefined, interior: EMPTY_SIDE, artSide: 'out', sel: EMPTY_SEL, template: 'lidBox' });
     get().regenerate();
     get().commit({ objects: [] }, 'template');
   },

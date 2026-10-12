@@ -5,7 +5,7 @@ import { ensureFonts } from '../art/fonts';
 import type { ArtObject } from '../art/objects';
 import { bleedOutline, materialOutline } from '../geometry/outline';
 import type { Dieline, Vec2 } from '../geometry/types';
-import { buildSvg, viewBoxOf } from './svg';
+import { buildBackSvg, buildSvg, viewBoxOf } from './svg';
 
 export interface PdfInput {
   dieline: Dieline;
@@ -15,6 +15,8 @@ export interface PdfInput {
   faceColors?: Record<string, string>;
   bgColor?: string;
   objects: ArtObject[];
+  /** Arte do interior (verso). Se houver, vira a página 2. */
+  interior?: { bgColor?: string; fullImage?: string; faceColors: Record<string, string>; faceImages: Record<string, string> };
   /** Resolução da arte rasterizada. */
   dpi?: number;
 }
@@ -22,8 +24,8 @@ export interface PdfInput {
 const PT = 72 / 25.4; // pontos por mm
 
 /** Rasteriza só a camada de arte (fundo transparente) para PNG. */
-async function rasterArt(inp: PdfInput, vb: number[], dpi: number): Promise<Uint8Array> {
-  const svg = buildSvg({ ...inp, layers: { artwork: true, bleed: false, cut: false, crease: false } });
+async function rasterArt(inp: PdfInput, vb: number[], dpi: number, svgOverride?: string): Promise<Uint8Array> {
+  const svg = svgOverride ?? buildSvg({ ...inp, layers: { artwork: true, bleed: false, cut: false, crease: false } });
   const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
   try {
     const img = new Image();
@@ -109,6 +111,20 @@ export async function buildPdf(inp: PdfInput): Promise<Uint8Array> {
   strokeLayer('OCBleed', 'CSGuide', bl, true);
   strokeLayer('OCCut', 'CSCut', inp.dieline.cuts);
   strokeLayer('OCCrease', 'CSCrease', inp.dieline.creases);
+
+  // página 2: verso (interior), espelhado para impressão frente e verso virando pela borda longa
+  const inside = inp.interior;
+  const hasBack = inside && (inside.bgColor || inside.fullImage || Object.keys(inside.faceColors).length ||
+    Object.keys(inside.faceImages).length || inp.objects.some((o) => o.side === 'in'));
+  if (hasBack) {
+    const backSvg = buildBackSvg({ dieline: inp.dieline, bleed: inp.bleed, art: inside!, objects: inp.objects, guides: false });
+    const backPng = await pdf.embedPng(await rasterArt(inp, vb, inp.dpi ?? 300, backSvg));
+    const back = pdf.addPage([vw * PT, vh * PT]);
+    back.node.Resources()!.set(PDFName.of('Properties'), ctx.obj({ OCArt: L.art }));
+    back.pushOperators(begin('OCArt'));
+    back.drawImage(backPng, { x: 0, y: 0, width: vw * PT, height: vh * PT });
+    back.pushOperators(end());
+  }
 
   // sem object streams: mais compatível com RIPs e softwares de plotter antigos
   return pdf.save({ useObjectStreams: false });
