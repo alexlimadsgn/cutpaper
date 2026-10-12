@@ -1,10 +1,10 @@
-import { Box, NativeSelect, SimpleGrid, Text } from '@chakra-ui/react';
+import { Box, SimpleGrid, Text } from '@chakra-ui/react';
 import { graphBounds, scaleGraph } from '../geometry/graph';
 import { TEMPLATES, type TemplateId } from '../geometry/templates';
 import { useStore } from '../store';
 import { SideSwitch } from './ArtProps';
 import { Inspector } from './Inspector';
-import { Check, NumField, Section } from './ui';
+import { Check, CompactSelect, NumField, Section } from './ui';
 
 /** Propriedades do modo Edição: seleção + molde + modelo paramétrico. */
 export function StructureProps() {
@@ -29,43 +29,42 @@ export function StructureProps() {
       <Inspector />
 
       <Section title="Molde">
-        <SimpleGrid columns={2} gap={3}>
-          <NumField label="Largura total (mm)" step={0.5} value={+b.w.toFixed(2)} onChange={(v) => resize('w', v)} />
-          <NumField label="Altura total (mm)" step={0.5} value={+b.h.toFixed(2)} onChange={(v) => resize('h', v)} />
-          <NumField label="Sangria (mm)" value={s.bleed} step={0.5} onChange={s.setBleed} />
-          <NumField label="Grade/snap (mm)" value={s.grid} step={0.5} onChange={s.setGrid} />
+        <SimpleGrid columns={2} gap={1.5}>
+          <NumField prefix="L" suffix="mm" title="Largura total do molde (redimensiona proporcionalmente)" step={0.5} value={+b.w.toFixed(2)} onChange={(v) => resize('w', v)} />
+          <NumField prefix="A" suffix="mm" title="Altura total do molde (redimensiona proporcionalmente)" step={0.5} value={+b.h.toFixed(2)} onChange={(v) => resize('h', v)} />
+          <NumField prefix="Sangria" suffix="mm" title="Sangria" value={s.bleed} step={0.5} onChange={s.setBleed} />
+          <NumField prefix="Grade" suffix="mm" title="Grade / snap (0 desliga)" value={s.grid} step={0.5} onChange={s.setGrid} />
         </SimpleGrid>
-        <Box mt={4}>
+        <Box mt={2.5}>
           <Check label="Mostrar medidas" checked={s.showDims} onChange={() => s.setShowDims(!s.showDims)} />
         </Box>
-        {s.importInfo && <Text fontSize="xs" color="gray.600" mt={3}>{s.importInfo}</Text>}
+        {s.importInfo && <Text fontSize="10px" color="gray.500" mt={2}>{s.importInfo}</Text>}
       </Section>
 
       <Section title="Modelo paramétrico">
-        <NativeSelect.Root size="sm">
-          <NativeSelect.Field value={s.template} onChange={() => {}}>
-            {(Object.keys(TEMPLATES) as TemplateId[]).map((id) => (
-              <option key={id} value={id}>{TEMPLATES[id].name}</option>
-            ))}
-          </NativeSelect.Field>
-          <NativeSelect.Indicator />
-        </NativeSelect.Root>
-        <SimpleGrid columns={3} gap={3} mt={4}>
-          <NumField label="Largura" value={params.width} onChange={(v) => setParam('width', v)} />
-          <NumField label="Profund." value={params.depth} onChange={(v) => setParam('depth', v)} />
-          <NumField label="Altura" value={params.height} onChange={(v) => setParam('height', v)} />
-          <NumField label="Aba tampa" value={params.tuck} onChange={(v) => setParam('tuck', v)} />
-          <NumField label="Abas cola" value={params.glue} onChange={(v) => setParam('glue', v)} />
-          <NumField label="Espessura" value={params.thickness} step={0.1} onChange={(v) => setParam('thickness', v)} />
+        <CompactSelect value={s.template} onChange={() => {}} title="Modelo">
+          {(Object.keys(TEMPLATES) as TemplateId[]).map((id) => (
+            <option key={id} value={id}>{TEMPLATES[id].name}</option>
+          ))}
+        </CompactSelect>
+        <SimpleGrid columns={3} gap={1.5} mt={1.5}>
+          <NumField prefix="L" title="Largura (mm)" value={params.width} onChange={(v) => setParam('width', v)} />
+          <NumField prefix="P" title="Profundidade (mm)" value={params.depth} onChange={(v) => setParam('depth', v)} />
+          <NumField prefix="A" title="Altura (mm)" value={params.height} onChange={(v) => setParam('height', v)} />
+        </SimpleGrid>
+        <SimpleGrid columns={2} gap={1.5} mt={1.5}>
+          <NumField prefix="Aba tampa" title="Aba de encaixe da tampa (mm)" value={params.tuck} onChange={(v) => setParam('tuck', v)} />
+          <NumField prefix="Abas cola" title="Abas de cola (mm)" value={params.glue} onChange={(v) => setParam('glue', v)} />
+          <NumField prefix="Espessura" title="Espessura do papel (mm)" value={params.thickness} step={0.1} onChange={(v) => setParam('thickness', v)} />
         </SimpleGrid>
         {clamped.length > 0 && (
-          <Text fontSize="xs" color="blue.700" bg="blue.50" p={2} borderRadius="md" mt={3}>
-            Ajustado para ser possível montar: {clamped.join('; ')}.
+          <Text fontSize="10px" color="blue.700" bg="blue.50" p={2} borderRadius="6px" mt={2}>
+            Ajustado para montar: {clamped.join('; ')}.
           </Text>
         )}
         {s.source !== 'template' && (
-          <Text fontSize="xs" color="orange.600" mt={3}>
-            O molde atual foi {s.source === 'import' ? 'importado' : 'editado'}. Alterar um parâmetro gera o modelo de novo (Ctrl+Z desfaz).
+          <Text fontSize="10px" color="orange.600" mt={2}>
+            Molde {s.source === 'import' ? 'importado' : 'editado'}: alterar um parâmetro gera o modelo de novo (Ctrl+Z desfaz).
           </Text>
         )}
       </Section>

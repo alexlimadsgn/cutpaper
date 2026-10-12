@@ -1,10 +1,14 @@
-import { Button, Flex, Group, Input, SimpleGrid, Stack, Text } from '@chakra-ui/react';
+import { Box, Button, Flex, SimpleGrid, Text } from '@chakra-ui/react';
+import { ArrowLeftRight, FoldVertical, ListOrdered, Ruler, Trash2 } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { DEFAULT_ANGLE, deleteEdges, deleteVertices, normalize, updateEdges, type EdgeType } from '../geometry/graph';
 import { faceOfHinge, withSteps } from '../geometry/faces';
 import { stepCount } from '../geometry/fold';
 import { useStore } from '../store';
 import { useDieline } from '../useDieline';
-import { NumField, Section } from './ui';
+import { IconToggles, NumField, Section } from './ui';
+
+const Hint = ({ children }: { children: ReactNode }) => <Text fontSize="10px" color="gray.500" mt={2}>{children}</Text>;
 
 /** Propriedades do que está selecionado no editor (arestas, vértices ou face). */
 export function Inspector() {
@@ -16,80 +20,64 @@ export function Inspector() {
   if (edges.length) {
     const list = edges.map((id) => g.e[id]).filter(Boolean);
     const type = list.every((e) => e.type === list[0].type) ? list[0].type : undefined;
-    const creases = list.filter((e) => e.type === 'crease');
+    const creaseIds = edges.filter((id) => g.e[id]?.type === 'crease');
+    const crease = creaseIds.length ? g.e[creaseIds[0]] : undefined;
     const len = list.reduce((sum, e) => sum + Math.hypot(g.v[e.b].x - g.v[e.a].x, g.v[e.b].y - g.v[e.a].y), 0);
     const setType = (t: EdgeType) => s.commit({ graph: updateEdges(g, edges, { type: t, ...(t === 'crease' ? { angle: DEFAULT_ANGLE } : {}) }) });
+    const setAngle = (a: number) => s.commit({ graph: updateEdges(g, creaseIds, { angle: Math.max(-180, Math.min(180, a)) }) });
+    const f = crease ? faceOfHinge(g, dieline, creaseIds[0]) : undefined;
+    const total = stepCount(dieline.faces);
+    // fechamento em %: 100% = 90°; o sinal (sentido) é mantido
+    const pct = crease ? Math.round((Math.abs(crease.angle) / 90) * 100) : 0;
+    const setPct = (p: number) => crease && setAngle((crease.angle < 0 ? -1 : 1) * +((90 * Math.max(0, p)) / 100).toFixed(1));
+
     return (
-      <Section title={edges.length > 1 ? `${edges.length} linhas` : 'Linha'}>
-        <Stack gap={4}>
-          <Group attached w="full">
-            <Button flex={1} size="sm" variant={type === 'cut' ? 'solid' : 'outline'} colorPalette="red" onClick={() => setType('cut')}>Corte</Button>
-            <Button flex={1} size="sm" variant={type === 'crease' ? 'solid' : 'outline'} colorPalette="blue" onClick={() => setType('crease')}>Vinco</Button>
-          </Group>
-          {creases.length > 0 && (
-            <SimpleGrid columns={2} gap={3} alignItems="end">
-              <NumField
-                label="Ângulo da dobra (°)"
-                min={-180}
-                value={creases[0].angle}
-                onChange={(v) => s.commit({ graph: updateEdges(g, edges.filter((id) => g.e[id].type === 'crease'), { angle: Math.max(-180, Math.min(180, v)) }) })}
-              />
-              <Button
-                size="md"
-                variant="outline"
-                onClick={() => s.commit({ graph: updateEdges(g, edges.filter((id) => g.e[id].type === 'crease'), { angle: -creases[0].angle }) })}
-              >
-                Inverter
-              </Button>
+      <>
+        <Section
+          title={edges.length > 1 ? `${edges.length} linhas` : 'Linha'}
+          action={
+            <Button size="2xs" variant="ghost" onClick={() => { s.commit({ graph: deleteEdges(g, edges) }); s.select({}); }} title="Excluir (Del)">
+              <Trash2 size={12} />
+            </Button>
+          }
+        >
+          <IconToggles items={[
+            { key: 'cut', icon: <Text fontSize="11px" color={type === 'cut' ? 'red.600' : undefined}>Corte</Text>, active: type === 'cut', title: 'Linha de corte', onClick: () => setType('cut') },
+            { key: 'crease', icon: <Text fontSize="11px" color={type === 'crease' ? 'blue.600' : undefined}>Vinco</Text>, active: type === 'crease', title: 'Linha de vinco', onClick: () => setType('crease') },
+          ]} />
+          <Hint>Comprimento {len.toFixed(2).replace('.', ',')} mm · duplo clique na linha insere vértice</Hint>
+        </Section>
+
+        {crease && (
+          <Section title="Dobra">
+            <SimpleGrid columns={2} gap={1.5}>
+              <NumField prefix="∠" suffix="°" title="Ângulo da dobra" min={-180} value={crease.angle} onChange={setAngle} />
+              <NumField prefix={<FoldVertical size={11} />} suffix="%" title="Fechamento (100% = 90°)" min={0} step={5} value={pct} onChange={setPct} />
             </SimpleGrid>
-          )}
-          {creases.length > 0 && (() => {
-            // fechamento em %: 100% = 90°; o sinal (sentido) é mantido
-            const ids = edges.filter((id) => g.e[id].type === 'crease');
-            const a = creases[0].angle;
-            const sign = a < 0 ? -1 : 1;
-            const pct = Math.round((Math.abs(a) / 90) * 100);
-            const setPct = (p: number) => s.commit({ graph: updateEdges(g, ids, { angle: sign * Math.min(180, Math.max(0, +(90 * p / 100).toFixed(1))) }) });
-            return (
-              <Stack gap={2}>
-                <SimpleGrid columns={2} gap={3} alignItems="end">
-                  <NumField label="Fechamento (%)" min={0} step={5} value={pct} onChange={setPct} />
-                  <Text fontSize="xs" color="gray.500" pb={2}>100% = 90° · 200% = 180°</Text>
-                </SimpleGrid>
-                <Group attached w="full">
-                  {[25, 50, 75, 100].map((p) => (
-                    <Button key={p} flex={1} size="xs" variant={pct === p ? 'solid' : 'outline'} onClick={() => setPct(p)}>{p}%</Button>
-                  ))}
-                </Group>
-              </Stack>
-            );
-          })()}
-          {creases.length > 0 && (() => {
-            const ids = edges.filter((id) => g.e[id].type === 'crease');
-            const f = faceOfHinge(g, dieline, ids[0]);
-            if (!f?.step) return null;
-            const total = stepCount(dieline.faces);
-            return (
-              <Stack gap={1}>
-                <SimpleGrid columns={2} gap={3} alignItems="end">
-                  <NumField
-                    label={`Etapa da montagem (de ${total})`}
-                    min={1}
-                    value={f.step}
-                    onChange={(v) => s.commit({ graph: withSteps(g, dieline, Object.fromEntries(ids.map((id) => [id, Math.max(1, Math.round(v))]))) })}
-                  />
-                  <Text fontSize="xs" color="gray.500" pb={2}>{g.e[ids[0]].step ? 'definida por você' : 'automática'}</Text>
-                </SimpleGrid>
-                <Text fontSize="xs" color="gray.500">Dobra "{f.name}". Use um número maior para dobrar depois.</Text>
-              </Stack>
-            );
-          })()}
-          <Text fontSize="xs" color="gray.500">Comprimento: {len.toFixed(2)} mm · duplo clique na linha insere um vértice</Text>
-          <Button size="sm" variant="outline" colorPalette="red" onClick={() => { s.commit({ graph: deleteEdges(g, edges) }); s.select({}); }}>
-            Excluir linha{edges.length > 1 ? 's' : ''}
-          </Button>
-        </Stack>
-      </Section>
+            <Flex gap={1.5} mt={1.5}>
+              <Box flex={1}>
+                <IconToggles items={[25, 50, 75, 100].map((p) => ({ key: String(p), icon: <Text fontSize="10px">{p}%</Text>, active: pct === p, title: `Fechar ${p}%`, onClick: () => setPct(p) }))} />
+              </Box>
+              <Button size="2xs" h="28px" variant="subtle" onClick={() => setAngle(-crease.angle)} title="Inverter o sentido da dobra">
+                <ArrowLeftRight size={12} />
+              </Button>
+            </Flex>
+            {f?.step && (
+              <Box mt={1.5}>
+                <NumField
+                  prefix={<ListOrdered size={11} />}
+                  suffix={`de ${total}`}
+                  title="Etapa da montagem (número maior = dobra depois)"
+                  min={1}
+                  value={f.step}
+                  onChange={(v) => s.commit({ graph: withSteps(g, dieline, Object.fromEntries(creaseIds.map((id) => [id, Math.max(1, Math.round(v))]))) })}
+                />
+                <Hint>Dobra "{f.name}" · etapa {g.e[creaseIds[0]].step ? 'definida por você' : 'automática'}</Hint>
+              </Box>
+            )}
+          </Section>
+        )}
+      </>
     );
   }
 
@@ -100,19 +88,21 @@ export function Inspector() {
       s.commit({ graph: normalize(ng, 0.01) });
     };
     return (
-      <Section title={one ? 'Vértice' : `${vertices.length} vértices`}>
-        <Stack gap={4}>
-          {one && (
-            <SimpleGrid columns={2} gap={3}>
-              <NumField label="X (mm)" min={-1e6} step={0.1} value={+one.x.toFixed(3)} onChange={(v) => move('x', v)} />
-              <NumField label="Y (mm)" min={-1e6} step={0.1} value={+one.y.toFixed(3)} onChange={(v) => move('y', v)} />
-            </SimpleGrid>
-          )}
-          <Text fontSize="xs" color="gray.500">Arraste para mover · setas = 0,1 mm (Shift = 1 mm) · Shift trava o eixo</Text>
-          <Button size="sm" variant="outline" colorPalette="red" onClick={() => { s.commit({ graph: deleteVertices(g, vertices) }); s.select({}); }}>
-            Excluir vértice{vertices.length > 1 ? 's' : ''}
+      <Section
+        title={one ? 'Vértice' : `${vertices.length} vértices`}
+        action={
+          <Button size="2xs" variant="ghost" onClick={() => { s.commit({ graph: deleteVertices(g, vertices) }); s.select({}); }} title="Excluir (Del)">
+            <Trash2 size={12} />
           </Button>
-        </Stack>
+        }
+      >
+        {one && (
+          <SimpleGrid columns={2} gap={1.5}>
+            <NumField prefix="X" title="X (mm)" min={-1e6} step={0.1} value={+one.x.toFixed(3)} onChange={(v) => move('x', v)} />
+            <NumField prefix="Y" title="Y (mm)" min={-1e6} step={0.1} value={+one.y.toFixed(3)} onChange={(v) => move('y', v)} />
+          </SimpleGrid>
+        )}
+        <Hint>Arraste para mover · setas 0,1 mm (Shift 1 mm) · Shift trava o eixo</Hint>
       </Section>
     );
   }
@@ -122,40 +112,39 @@ export function Inspector() {
     const isRoot = !f.parent;
     return (
       <Section title="Face">
-        <Stack gap={3}>
-          <Input
-            size="sm"
+        <Box h="28px" bg="gray.50" borderRadius="6px" px={2} display="flex" alignItems="center">
+          <input
             defaultValue={f.name}
             key={f.id}
             onBlur={(e) => e.target.value !== f.name && s.commit({ names: { ...s.doc.names, [f.id]: e.target.value } })}
+            onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+            style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 12 }}
           />
-          <Flex justify="space-between" fontSize="xs" color="gray.500">
-            <span>Área: {(f.area / 100).toFixed(1)} cm²</span>
-            <span>{isRoot ? 'Base da dobra' : `Dobra: ${f.angle}°`}</span>
-          </Flex>
-          {conflicts.filter((c) => c.face === f.id).map((c) => {
-            const other = dieline.faces.find((x) => x.id === c.other)?.name ?? 'outra face';
-            return (
-              <Text key={c.other} fontSize="xs" color="red.600" bg="red.50" p={2} borderRadius="md">
-                {c.kind === 'overlap'
-                  ? `Sobrepõe "${other}" na caixa montada (${c.area.toFixed(0)} mm²). Reduza uma das abas.`
-                  : `Passa ${c.area.toFixed(0)} mm² da borda de "${other}", onde deveria ser colada.`}
-              </Text>
-            );
-          })}
-          {!isRoot && (
-            <Button size="sm" variant="outline" onClick={() => s.commit({ root: f.id })}>Definir como base</Button>
-          )}
-        </Stack>
+        </Box>
+        <Flex justify="space-between" fontSize="10px" color="gray.500" mt={2}>
+          <span><Ruler size={10} style={{ display: 'inline', verticalAlign: '-1px' }} /> {(f.area / 100).toFixed(1).replace('.', ',')} cm²</span>
+          <span>{isRoot ? 'Base da dobra' : `Dobra ${f.angle}°`}</span>
+        </Flex>
+        {conflicts.filter((c) => c.face === f.id).map((c) => {
+          const other = dieline.faces.find((x) => x.id === c.other)?.name ?? 'outra face';
+          return (
+            <Text key={c.other} fontSize="11px" color="red.600" bg="red.50" p={2} borderRadius="6px" mt={2}>
+              {c.kind === 'overlap'
+                ? `Sobrepõe "${other}" na caixa montada (${c.area.toFixed(0)} mm²).`
+                : `Passa ${c.area.toFixed(0)} mm² da borda de "${other}".`}
+            </Text>
+          );
+        })}
+        {!isRoot && (
+          <Button size="2xs" variant="subtle" w="full" mt={2} onClick={() => s.commit({ root: f.id })}>Definir como base da dobra</Button>
+        )}
       </Section>
     );
   }
 
   return (
     <Section title="Seleção">
-      <Text fontSize="sm" color="gray.500">
-        Clique numa linha, vértice ou face. Arraste no vazio para selecionar vários (Shift soma).
-      </Text>
+      <Text fontSize="11px" color="gray.500">Clique numa linha, vértice ou face. Arraste no vazio para selecionar vários (Shift soma).</Text>
     </Section>
   );
 }

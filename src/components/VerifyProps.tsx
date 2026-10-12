@@ -106,8 +106,8 @@ export function VerifyProps() {
         )}
       >
         <Flex gap={3} align="center">
-          <Button size="sm" variant="outline" onClick={() => setPlaying((p) => !p)} aria-label={playing ? 'Pausar' : 'Animar'}>
-            {playing ? <Pause size={16} /> : <Play size={16} />}
+          <Button size="xs" variant="outline" onClick={() => setPlaying((p) => !p)} aria-label={playing ? 'Pausar' : 'Animar'}>
+            {playing ? <Pause size={13} /> : <Play size={13} />}
           </Button>
           <Slider.Root
             flex={1}
@@ -123,7 +123,7 @@ export function VerifyProps() {
             </Slider.Control>
           </Slider.Root>
         </Flex>
-        <Flex justify="space-between" align="center" fontSize="xs" color="gray.500" mt={2}>
+        <Flex justify="space-between" align="center" fontSize="11px" color="gray.500" mt={2}>
           <Button size="2xs" variant="ghost" disabled={current <= 0} onClick={() => goStep(current - 1)} aria-label="Etapa anterior"><ChevronLeft size={14} /></Button>
           <Text fontWeight="600" color="gray.700">{current === 0 ? 'Planificado' : `Etapa ${current} de ${steps}`}</Text>
           <Button size="2xs" variant="ghost" disabled={current >= steps} onClick={() => goStep(current + 1)} aria-label="Próxima etapa"><ChevronRight size={14} /></Button>
@@ -141,7 +141,7 @@ export function VerifyProps() {
                 textAlign="left"
                 p={2}
                 borderRadius="md"
-                fontSize="xs"
+                fontSize="11px"
                 bg={k === current ? 'red.50' : undefined}
                 borderWidth="1px"
                 borderColor={k === current ? 'red.200' : 'transparent'}
@@ -159,26 +159,26 @@ export function VerifyProps() {
             );
           })}
         </Stack>
-        <Text fontSize="xs" color="gray.500" mt={2}>
+        <Text fontSize="11px" color="gray.500" mt={2}>
           Clique numa etapa para ver a caixa até ali. Para mudar a ordem, selecione o vinco no modo Edição.
         </Text>
       </Section>
 
       <Section title="Correção automática">
-        <Button w="full" size="sm" colorPalette="red" variant="outline" loading={fixing} loadingText="Corrigindo…" onClick={runFix}>
-          <Wand2 size={15} /> Corrigir montagem
+        <Button w="full" size="xs" colorPalette="red" variant="outline" loading={fixing} loadingText="Corrigindo…" onClick={runFix}>
+          <Wand2 size={13} /> Corrigir montagem
         </Button>
-        <Button w="full" size="sm" variant="outline" mt={2} loading={fixing} onClick={runRectify}>
-          <Ruler size={15} /> Endireitar geometria
+        <Button w="full" size="xs" variant="outline" mt={2} loading={fixing} onClick={runRectify}>
+          <Ruler size={13} /> Endireitar geometria
         </Button>
-        <Text fontSize="xs" color="gray.500" mt={2}>
+        <Text fontSize="11px" color="gray.500" mt={2}>
           <b>Endireitar</b>: refaz o molde deformado em esquadro a partir da face selecionada
           {s.sel.face ? '' : ' (ou da mais retangular)'}, seguindo os vincos.{' '}
           <b>Corrigir montagem</b>: ajusta ângulo e sentido das dobras para a caixa fechar e o tamanho das abas de cola
           (encolhe as que sobram ou se sobrepõem, aumenta as pequenas demais). Ctrl+Z desfaz.
         </Text>
         {fixReport && (
-          <Box mt={3} p={3} borderRadius="md" bg={fixReport.changes.length ? 'blue.50' : 'gray.50'} fontSize="xs">
+          <Box mt={3} p={3} borderRadius="md" bg={fixReport.changes.length ? 'blue.50' : 'gray.50'} fontSize="11px">
             {fixReport.changes.length ? (
               <>
                 <Text fontWeight="700" color="blue.800" mb={1}>
@@ -197,7 +197,7 @@ export function VerifyProps() {
 
       <Section title="Verificação">
         {issues.length === 0 ? (
-          <Flex gap={2} align="center" color="green.700" bg="green.50" p={3} borderRadius="md" fontSize="sm">
+          <Flex gap={2} align="center" color="green.700" bg="green.50" p={3} borderRadius="md" fontSize="12px">
             <CircleCheck size={18} /> Tudo certo para imprimir e montar.
           </Flex>
         ) : (
@@ -208,7 +208,7 @@ export function VerifyProps() {
               const { icon: Icon, color, bg, label } = SEV[sev];
               return (
                 <Box key={sev}>
-                  <Text fontSize="xs" fontWeight="700" color={color} mb={2} textTransform="uppercase" letterSpacing="0.05em">
+                  <Text fontSize="11px" fontWeight="700" color={color} mb={2} textTransform="uppercase" letterSpacing="0.05em">
                     {label} ({list.length})
                   </Text>
                   <Stack gap={2}>
@@ -225,7 +225,7 @@ export function VerifyProps() {
                           cursor="pointer"
                           onClick={() => open(i)}
                         >
-                          <Flex gap={2} align="flex-start" fontSize="xs" color={color}>
+                          <Flex gap={2} align="flex-start" fontSize="11px" color={color}>
                             <Box pt="1px" flexShrink={0}><Icon size={14} /></Box>
                             <Box flex={1}>
                               <Text fontWeight="600" fontSize="2xs" opacity={0.8}>{i.group}</Text>
@@ -253,15 +253,15 @@ export function VerifyProps() {
             })}
           </Stack>
         )}
-        <Text fontSize="xs" color="gray.500" mt={3}>
+        <Text fontSize="11px" color="gray.500" mt={3}>
           A verificação simula a caixa 100% montada. Clique num item para localizá-lo.
         </Text>
       </Section>
 
       <Section title="Critérios">
-        <SimpleGrid columns={2} gap={3}>
-          <NumField label="Margem do texto (mm)" step={0.5} value={s.safeMargin} onChange={s.setSafeMargin} />
-          <NumField label="Resolução mínima (dpi)" step={50} value={s.minDpi} onChange={s.setMinDpi} />
+        <SimpleGrid columns={2} gap={1.5}>
+          <NumField prefix="Margem" suffix="mm" title="Distância mínima do texto até corte/vinco" step={0.5} value={s.safeMargin} onChange={s.setSafeMargin} />
+          <NumField prefix="Mín." suffix="dpi" title="Resolução mínima das imagens" step={50} value={s.minDpi} onChange={s.setMinDpi} />
         </SimpleGrid>
       </Section>
 

@@ -915,10 +915,10 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
         </Text>
       )}
 
-      {!compact && <Group attached position="absolute" bottom={4} left={4} bg="white" borderRadius="md" shadow="sm">
-        <IconButton size="sm" variant="outline" aria-label="Diminuir zoom" onClick={() => setView((c) => c && { ...c, scale: c.scale / 1.25 })}>−</IconButton>
-        <Button size="sm" variant="outline" onClick={fit} title="Ajustar à tela">{Math.round(v.scale * 100 / 3.78)}%</Button>
-        <IconButton size="sm" variant="outline" aria-label="Aumentar zoom" onClick={() => setView((c) => c && { ...c, scale: c.scale * 1.25 })}>+</IconButton>
+      {!compact && <Group attached position="absolute" bottom={3} left={3} bg="white" borderRadius="md" shadow="xs">
+        <IconButton size="xs" variant="outline" aria-label="Diminuir zoom" onClick={() => setView((c) => c && { ...c, scale: c.scale / 1.25 })}>−</IconButton>
+        <Button size="xs" variant="outline" minW="52px" fontSize="11px" onClick={fit} title="Ajustar à tela">{Math.round(v.scale * 100 / 3.78)}%</Button>
+        <IconButton size="xs" variant="outline" aria-label="Aumentar zoom" onClick={() => setView((c) => c && { ...c, scale: c.scale * 1.25 })}>+</IconButton>
       </Group>}
     </Box>
   );

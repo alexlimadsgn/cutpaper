@@ -32,7 +32,7 @@ export default function App() {
         <ToolRail />
         <LayersPanel />
         <CanvasArea />
-        <Box w={{ base: '260px', xl: '320px' }} flexShrink={0} bg="white" borderLeftWidth="1px" borderColor="gray.200" overflowY="auto" px={5} py={4}>
+        <Box w="248px" flexShrink={0} bg="white" borderLeftWidth="1px" borderColor="gray.200" overflowY="auto" pb={6}>
           {s.mode === 'structure' && <StructureProps />}
           {s.mode === 'art' && <ArtProps />}
           {s.mode === 'verify' && <VerifyProps />}
@@ -80,15 +80,15 @@ function TopBar() {
   };
 
   return (
-    <Flex h="56px" flexShrink={0} align="center" px={{ base: 2, md: 4 }} gap={{ base: 2, md: 4 }} bg="white" borderBottomWidth="1px" borderColor="gray.200">
+    <Flex h="44px" flexShrink={0} align="center" px={{ base: 2, md: 3 }} gap={{ base: 1, md: 2 }} bg="white" borderBottomWidth="1px" borderColor="gray.200">
       <Flex align="center" gap={{ base: 1, md: 3 }} w={{ base: 'auto', lg: '230px' }} flexShrink={0}>
         <Flex align="center" gap={2}>
-          <Box w="26px" h="26px" borderRadius="md" bg="red.500" color="white" display="grid" placeItems="center"><Scissors size={15} /></Box>
-          <Heading size="md" fontWeight="800" letterSpacing="-0.02em" display={{ base: 'none', md: 'block' }}>CutPaper</Heading>
+          <Box w="22px" h="22px" borderRadius="6px" bg="red.500" color="white" display="grid" placeItems="center"><Scissors size={13} /></Box>
+          <Heading fontSize="14px" fontWeight="800" letterSpacing="-0.02em" display={{ base: 'none', md: 'block' }}>CutPaper</Heading>
         </Flex>
         <Menu.Root>
           <Menu.Trigger asChild>
-            <Button size="sm" variant="ghost">Arquivo <ChevronDown size={14} /></Button>
+            <Button size="xs" variant="ghost">Arquivo <ChevronDown size={14} /></Button>
           </Menu.Trigger>
           <Portal>
             <Menu.Positioner>
@@ -110,22 +110,22 @@ function TopBar() {
 
       <Flex gap={{ base: 1, md: 2 }} align="center" flexShrink={0}>
         <Button
-          size="sm"
+          size="xs"
           variant={s.mode === 'verify' ? 'solid' : 'ghost'}
           colorPalette={s.mode === 'verify' ? 'red' : 'gray'}
           onClick={s.toggleVerify}
           title={s.mode === 'verify' ? 'Voltar para a edição' : 'Verificar montagem em 3D'}
           aria-pressed={s.mode === 'verify'}
         >
-          <BoxIcon size={16} /> 3D
+          <BoxIcon size={14} /> 3D
         </Button>
-        <IconButton size="sm" variant="ghost" aria-label="Desfazer" title="Desfazer (Ctrl+Z)" disabled={!s.past.length} onClick={s.undo}><Undo2 size={16} /></IconButton>
-        <IconButton size="sm" variant="ghost" aria-label="Refazer" title="Refazer (Ctrl+Shift+Z)" disabled={!s.future.length} onClick={s.redo}><Redo2 size={16} /></IconButton>
+        <IconButton size="xs" variant="ghost" aria-label="Desfazer" title="Desfazer (Ctrl+Z)" disabled={!s.past.length} onClick={s.undo}><Undo2 size={14} /></IconButton>
+        <IconButton size="xs" variant="ghost" aria-label="Refazer" title="Refazer (Ctrl+Shift+Z)" disabled={!s.future.length} onClick={s.redo}><Redo2 size={14} /></IconButton>
         <Box w="1px" h="24px" bg="gray.200" mx={1} />
         <Menu.Root>
           <Menu.Trigger asChild>
-            <Button size="sm" colorPalette="red" loading={!!busy} loadingText={busy === 'pdf' ? 'Gerando PDF…' : 'Exportando…'}>
-              <Download size={15} /> Exportar <ChevronDown size={14} />
+            <Button size="xs" colorPalette="red" loading={!!busy} loadingText={busy === 'pdf' ? 'Gerando PDF…' : 'Exportando…'}>
+              <Download size={13} /> Exportar <ChevronDown size={14} />
             </Button>
           </Menu.Trigger>
           <Portal>
@@ -168,7 +168,7 @@ function RailButton({ label, active, onClick, children }: { label: string; activ
     <IconButton
       aria-label={label}
       title={label}
-      size="md"
+      size="sm"
       variant="ghost"
       bg={active ? 'gray.900' : undefined}
       color={active ? 'white' : 'gray.700'}
@@ -184,26 +184,26 @@ function RailButton({ label, active, onClick, children }: { label: string; activ
 function ToolRail() {
   const s = useStore();
   const [about, setAbout] = useState(false);
-  const select = <RailButton label="Selecionar (V)" active={s.tool === 'select'} onClick={() => s.setTool('select')}><MousePointer2 size={18} /></RailButton>;
+  const select = <RailButton label="Selecionar (V)" active={s.tool === 'select'} onClick={() => s.setTool('select')}><MousePointer2 size={16} /></RailButton>;
   return (
-    <Flex direction="column" align="center" gap={1} w="56px" py={3} flexShrink={0} bg="white" borderRightWidth="1px" borderColor="gray.200">
+    <Flex direction="column" align="center" gap="2px" w="44px" py={2} flexShrink={0} bg="white" borderRightWidth="1px" borderColor="gray.200">
       {select}
       {s.mode === 'structure' && (
         <>
-          <RailButton label="Linha de corte (C)" active={s.tool === 'cut'} onClick={() => s.setTool('cut')}><Scissors size={18} /></RailButton>
-          <RailButton label="Linha de vinco (D)" active={s.tool === 'crease'} onClick={() => s.setTool('crease')}><FoldVertical size={18} /></RailButton>
+          <RailButton label="Linha de corte (C)" active={s.tool === 'cut'} onClick={() => s.setTool('cut')}><Scissors size={16} /></RailButton>
+          <RailButton label="Linha de vinco (D)" active={s.tool === 'crease'} onClick={() => s.setTool('crease')}><FoldVertical size={16} /></RailButton>
         </>
       )}
       {s.mode === 'art' && (
         <>
-          <RailButton label="Retângulo (R)" active={s.tool === 'rect'} onClick={() => s.setTool('rect')}><Square size={18} /></RailButton>
-          <RailButton label="Elipse (E)" active={s.tool === 'ellipse'} onClick={() => s.setTool('ellipse')}><Circle size={18} /></RailButton>
-          <RailButton label="Texto (T)" active={s.tool === 'text'} onClick={() => s.setTool('text')}><Type size={18} /></RailButton>
-          <RailButton label={s.sel.face ? 'Imagem (na face selecionada)' : 'Imagem'} onClick={insertImageObject}><ImagePlus size={18} /></RailButton>
+          <RailButton label="Retângulo (R)" active={s.tool === 'rect'} onClick={() => s.setTool('rect')}><Square size={16} /></RailButton>
+          <RailButton label="Elipse (E)" active={s.tool === 'ellipse'} onClick={() => s.setTool('ellipse')}><Circle size={16} /></RailButton>
+          <RailButton label="Texto (T)" active={s.tool === 'text'} onClick={() => s.setTool('text')}><Type size={16} /></RailButton>
+          <RailButton label={s.sel.face ? 'Imagem (na face selecionada)' : 'Imagem'} onClick={insertImageObject}><ImagePlus size={16} /></RailButton>
         </>
       )}
       <Box flex={1} />
-      <RailButton label="Sobre o CutPaper" onClick={() => setAbout(true)}><Info size={18} /></RailButton>
+      <RailButton label="Sobre o CutPaper" onClick={() => setAbout(true)}><Info size={16} /></RailButton>
       <AboutDialog open={about} onClose={() => setAbout(false)} />
     </Flex>
   );
@@ -254,7 +254,7 @@ function ModeSelect() {
     <Box position="absolute" top={3} left={3} zIndex={2}>
       <Menu.Root>
         <Menu.Trigger asChild>
-          <Button size="sm" variant="outline" bg="white" shadow="sm" title="Modo (Tab alterna)">
+          <Button size="xs" variant="outline" bg="white" shadow="xs" title="Modo (Tab alterna)">
             <cur.icon size={15} /> {cur.label} <ChevronDown size={14} />
           </Button>
         </Menu.Trigger>
@@ -282,7 +282,7 @@ function StatusBar() {
   const errors = issues.filter((i) => i.severity === 'error').length;
   const warnings = issues.filter((i) => i.severity === 'warning').length;
   return (
-    <Flex h="30px" flexShrink={0} align="center" px={4} gap={4} fontSize="xs" color="gray.500" bg="white" borderTopWidth="1px" borderColor="gray.200">
+    <Flex h="24px" flexShrink={0} align="center" px={3} gap={4} fontSize="11px" color="gray.500" bg="white" borderTopWidth="1px" borderColor="gray.200">
       <span>{dieline.faces.length} faces · {Object.keys(s.doc.graph.e).length} linhas · {s.doc.objects.length} objetos</span>
       <Box as="span" display={{ base: 'none', lg: 'inline' }}>Molde {(viewBox[2] - 4).toFixed(0)} × {(viewBox[3] - 4).toFixed(0)} mm (com sangria)</Box>
       <Box flex={1} />

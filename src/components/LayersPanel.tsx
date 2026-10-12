@@ -120,8 +120,8 @@ export function LayersPanel() {
         gap={2}
         pl={`${8 + depth * 14}px`}
         pr={2}
-        py="4px"
-        fontSize="xs"
+        py="3px"
+        fontSize="11px"
         cursor="pointer"
         bg={selected ? 'orange.100' : undefined}
         _hover={{ bg: selected ? 'orange.100' : 'gray.50' }}
@@ -163,7 +163,7 @@ export function LayersPanel() {
     );
 
   return (
-    <Flex direction="column" w="230px" flexShrink={0} bg="white" borderRightWidth="1px" borderColor="gray.200" minH={0} display={{ base: 'none', lg: 'flex' }}>
+    <Flex direction="column" w="220px" flexShrink={0} bg="white" borderRightWidth="1px" borderColor="gray.200" minH={0} display={{ base: 'none', lg: 'flex' }}>
       <Flex pl={4} pr={1} py={2} borderBottomWidth="1px" borderColor="gray.100" align="center" gap={1}>
         <Box flex={1} minW={0}>
           <Heading size="xs" fontWeight="700" textTransform="uppercase" letterSpacing="0.06em" color="gray.600">Camadas</Heading>
@@ -187,7 +187,7 @@ export function LayersPanel() {
       <Box flex={1} overflowY="auto" py={2}>
         {free.length > 0 && (
           <>
-            <Flex align="center" gap={2} pl="8px" pr={3} py="6px" fontSize="sm" color="gray.600" cursor="pointer" onClick={() => toggle(FREE)}>
+            <Flex align="center" gap={2} pl="8px" pr={3} py="6px" fontSize="12px" color="gray.600" cursor="pointer" onClick={() => toggle(FREE)}>
               {chevron(FREE)}
               <Layers size={14} />
               <Text flex={1}>Molde inteiro</Text>
@@ -208,8 +208,8 @@ export function LayersPanel() {
                 gap={2}
                 pl={`${8 + depth * 14}px`}
                 pr={3}
-                py="6px"
-                fontSize="sm"
+                py="4px"
+                fontSize="12px"
                 textAlign="left"
                 bg={selected ? 'orange.50' : undefined}
                 borderLeftWidth="2px"
