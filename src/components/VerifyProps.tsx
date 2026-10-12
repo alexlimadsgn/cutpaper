@@ -160,7 +160,7 @@ export function VerifyProps() {
           })}
         </Stack>
         <Text fontSize="xs" color="gray.500" mt={2}>
-          Clique numa etapa para ver a caixa até ali. Para mudar a ordem, selecione o vinco no modo Estrutura.
+          Clique numa etapa para ver a caixa até ali. Para mudar a ordem, selecione o vinco no modo Edição.
         </Text>
       </Section>
 
@@ -239,7 +239,7 @@ export function VerifyProps() {
                               )}
                               {(i.object || i.face) && (
                                 <Button size="2xs" variant="outline" bg="white" onClick={(e) => { e.stopPropagation(); goEdit(i); }}>
-                                  Editar no modo {i.object ? 'Arte' : 'Estrutura'}
+                                  Editar no modo {i.object ? 'Arte' : 'Edição'}
                                 </Button>
                               )}
                             </Flex>

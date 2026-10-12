@@ -51,6 +51,8 @@ interface State {
   fold: number; // 0..1
   tool: Tool;
   mode: Mode;
+  /** Último modo de trabalho (Arte/Edição), para voltar ao sair do 3D. */
+  lastWorkMode: 'art' | 'structure';
   /** Cor de fundo do molde inteiro (até a sangria). */
   bgColor?: string;
   /** Cor de fundo por face. */
@@ -60,7 +62,7 @@ interface State {
   dragging: boolean;
   /** Passo da grade de snap em mm (0 = desligado). */
   grid: number;
-  /** Mostra as cotas (medidas) das linhas no modo Estrutura. */
+  /** Mostra as cotas (medidas) das linhas no modo Edição. */
   showDims: boolean;
   /** Resumo da última importação de SVG. */
   importInfo?: string;
@@ -89,6 +91,8 @@ interface State {
   setFold: (v: number) => void;
   setTool: (t: Tool) => void;
   setMode: (m: Mode) => void;
+  /** Liga/desliga a verificação 3D, voltando ao modo em que estava. */
+  toggleVerify: () => void;
   setBgColor: (c?: string) => void;
   setFaceColor: (id: string, c?: string) => void;
   setSafeMargin: (v: number) => void;
@@ -136,7 +140,8 @@ export const useStore = create<State>((set, get) => ({
   faceImages: {},
   fold: 0.6,
   tool: 'select',
-  mode: 'structure',
+  mode: 'art',
+  lastWorkMode: 'art',
   faceColors: {},
   sel: EMPTY_SEL,
   dragging: false,
@@ -214,10 +219,15 @@ export const useStore = create<State>((set, get) => ({
   setMode: (mode) =>
     set((s) => ({
       mode,
-      // fora do modo Estrutura o molde fica travado: só faces podem ser selecionadas
+      lastWorkMode: mode === 'verify' ? s.lastWorkMode : mode,
+      // fora do modo Edição o molde fica travado: só faces podem ser selecionadas
       tool: 'select',
       sel: mode === 'structure' ? { ...EMPTY_SEL, face: s.sel.face } : { ...EMPTY_SEL, face: s.sel.face, object: s.sel.object },
     })),
+  toggleVerify: () => {
+    const { mode, lastWorkMode, setMode } = get();
+    setMode(mode === 'verify' ? lastWorkMode : 'verify');
+  },
   setBgColor: (bgColor) => set({ bgColor }),
   setSafeMargin: (safeMargin) => set({ safeMargin }),
   setMinDpi: (minDpi) => set({ minDpi }),

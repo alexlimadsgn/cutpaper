@@ -37,7 +37,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
   const bad = new Set(conflicts.map((c) => c.face));
   const s = useStore();
   const { graph, objects } = s.doc;
-  // fora do modo Estrutura (ou na miniatura) o molde fica travado: só faces são clicáveis
+  // fora do modo Edição (ou na miniatura) o molde fica travado: só faces são clicáveis
   const editable = s.mode === 'structure' && !compact;
   const artMode = s.mode === 'art' && !compact;
   const isLineTool = s.tool === 'cut' || s.tool === 'crease';
@@ -438,6 +438,11 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
       if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); return e.shiftKey ? st.redo() : st.undo(); }
       if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); return st.redo(); }
       if (compact) return; // a miniatura só responde a desfazer/refazer
+      // Tab alterna Arte ↔ Edição (como Object/Edit Mode do Blender)
+      if (e.key === 'Tab' && !mod && st.mode !== 'verify') {
+        e.preventDefault();
+        return st.setMode(st.mode === 'art' ? 'structure' : 'art');
+      }
 
       if (st.mode === 'art') {
         const o = st.doc.objects.find((x) => x.id === st.sel.object);

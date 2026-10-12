@@ -1,6 +1,6 @@
-import { Box, Button, Flex, Group, Heading, IconButton, Menu, Portal, Text } from '@chakra-ui/react';
+import { Box, Button, Flex, Heading, IconButton, Menu, Portal, Text } from '@chakra-ui/react';
 import {
-  Box as BoxIcon, ChevronDown, Circle, Download, FileCode, FilePlus, FileText, FolderOpen, Info, Save, Square, Type, FoldVertical, ImagePlus, Map as MapIcon, Minimize2, MousePointer2, Redo2, Scissors, Undo2, Upload,
+  Box as BoxIcon, ChevronDown, Circle, Download, FileCode, FilePlus, FileText, FolderOpen, Info, Paintbrush, Save, Spline, Square, Type, FoldVertical, ImagePlus, Map as MapIcon, Minimize2, MousePointer2, Redo2, Scissors, Undo2, Upload,
 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { AboutDialog } from './components/AboutDialog';
@@ -17,15 +17,10 @@ import { buildPdf } from './export/pdf';
 import { buildSvg, download } from './export/svg';
 import { openProjectFile, saveProjectFile } from './io/project';
 import { openSvgFile } from './io/openSvg';
-import { useStore, type Mode } from './store';
+import { useStore } from './store';
 import { useDieline } from './useDieline';
 import { useChecks } from './verify/useChecks';
 
-const MODES: { id: Mode; label: string }[] = [
-  { id: 'structure', label: 'Estrutura' },
-  { id: 'art', label: 'Arte' },
-  { id: 'verify', label: 'Verificar' },
-];
 
 export default function App() {
   const s = useStore();
@@ -104,28 +99,19 @@ function TopBar() {
         </Menu.Root>
       </Flex>
 
-      <Flex flex={1} justify="center">
-        <Group attached bg="gray.100" p="3px" borderRadius="lg">
-          {MODES.map((m) => (
-            <Button
-              key={m.id}
-              size="sm"
-              px={{ base: 2, md: 5 }}
-              borderRadius="md"
-              variant={s.mode === m.id ? 'solid' : 'ghost'}
-              bg={s.mode === m.id ? 'white' : 'transparent'}
-              color={s.mode === m.id ? 'gray.900' : 'gray.600'}
-              shadow={s.mode === m.id ? 'sm' : undefined}
-              _hover={{ bg: s.mode === m.id ? 'white' : 'gray.200' }}
-              onClick={() => s.setMode(m.id)}
-            >
-              {m.label}
-            </Button>
-          ))}
-        </Group>
-      </Flex>
+      <Box flex={1} />
 
       <Flex gap={{ base: 1, md: 2 }} align="center" flexShrink={0}>
+        <Button
+          size="sm"
+          variant={s.mode === 'verify' ? 'solid' : 'ghost'}
+          colorPalette={s.mode === 'verify' ? 'red' : 'gray'}
+          onClick={s.toggleVerify}
+          title={s.mode === 'verify' ? 'Voltar para a edição' : 'Verificar montagem em 3D'}
+          aria-pressed={s.mode === 'verify'}
+        >
+          <BoxIcon size={16} /> 3D
+        </Button>
         <IconButton size="sm" variant="ghost" aria-label="Desfazer" title="Desfazer (Ctrl+Z)" disabled={!s.past.length} onClick={s.undo}><Undo2 size={16} /></IconButton>
         <IconButton size="sm" variant="ghost" aria-label="Refazer" title="Refazer (Ctrl+Shift+Z)" disabled={!s.future.length} onClick={s.redo}><Redo2 size={16} /></IconButton>
         <Box w="1px" h="24px" bg="gray.200" mx={1} />
@@ -216,6 +202,11 @@ function CanvasArea() {
   return (
     <Box flex={1} minW="240px" position="relative" bg="gray.50">
       {main3D ? <Box position="absolute" inset={0}><Preview3D /></Box> : <Editor2D />}
+      {mode === 'structure' && (
+        // aviso visual: editando a geometria do molde
+        <Box position="absolute" inset={0} pointerEvents="none" boxShadow="inset 0 0 0 2px var(--chakra-colors-orange-300)" />
+      )}
+      {!main3D && <ModeSelect />}
       {miniOpen ? (
         <Box position="absolute" top={3} right={3} w="min(300px, 32%)" h="min(230px, 30%)" minW="160px" minH="120px" bg="white" borderRadius="lg" shadow="lg" borderWidth="1px" borderColor="gray.200" overflow="hidden">
           <Flex position="absolute" top={0} left={0} right={0} zIndex={1} justify="space-between" align="center" px={2} py={1} bg="whiteAlpha.800">
@@ -229,6 +220,41 @@ function CanvasArea() {
           {main3D ? <MapIcon size={14} /> : <BoxIcon size={14} />} {main3D ? 'Planificação' : '3D'}
         </Button>
       )}
+    </Box>
+  );
+}
+
+const WORK_MODES = [
+  { id: 'art' as const, label: 'Arte', icon: Paintbrush },
+  { id: 'structure' as const, label: 'Edição', icon: Spline },
+];
+
+/** Seletor Arte/Edição no canto do canvas (Tab alterna), como Object/Edit Mode do Blender. */
+function ModeSelect() {
+  const mode = useStore((s) => s.mode);
+  const setMode = useStore((s) => s.setMode);
+  const cur = WORK_MODES.find((m) => m.id === mode) ?? WORK_MODES[0];
+  return (
+    <Box position="absolute" top={3} left={3} zIndex={2}>
+      <Menu.Root>
+        <Menu.Trigger asChild>
+          <Button size="sm" variant="outline" bg="white" shadow="sm" title="Modo (Tab alterna)">
+            <cur.icon size={15} /> {cur.label} <ChevronDown size={14} />
+          </Button>
+        </Menu.Trigger>
+        <Portal>
+          <Menu.Positioner>
+            <Menu.Content minW="190px">
+              {WORK_MODES.map((m) => (
+                <Menu.Item key={m.id} value={m.id} onSelect={() => setMode(m.id)} fontWeight={m.id === mode ? '700' : '400'}>
+                  <m.icon size={15} /> {m.label}
+                  <Menu.ItemCommand>Tab</Menu.ItemCommand>
+                </Menu.Item>
+              ))}
+            </Menu.Content>
+          </Menu.Positioner>
+        </Portal>
+      </Menu.Root>
     </Box>
   );
 }

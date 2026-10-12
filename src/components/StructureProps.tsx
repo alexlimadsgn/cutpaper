@@ -5,7 +5,7 @@ import { useStore } from '../store';
 import { Inspector } from './Inspector';
 import { Check, NumField, Section } from './ui';
 
-/** Propriedades do modo Estrutura: seleção + molde + modelo paramétrico. */
+/** Propriedades do modo Edição: seleção + molde + modelo paramétrico. */
 export function StructureProps() {
   const s = useStore();
   const { params, setParam } = s;
