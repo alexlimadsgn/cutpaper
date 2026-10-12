@@ -58,7 +58,7 @@ export function ArtProps() {
 }
 
 /** Lado do papel em edição: exterior (frente) ou interior (verso). */
-function SideSwitch() {
+export function SideSwitch() {
   const side = useStore((s) => s.artSide);
   const setSide = useStore((s) => s.setArtSide);
   return (

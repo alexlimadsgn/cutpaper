@@ -2,6 +2,7 @@ import { Box, NativeSelect, SimpleGrid, Text } from '@chakra-ui/react';
 import { graphBounds, scaleGraph } from '../geometry/graph';
 import { TEMPLATES, type TemplateId } from '../geometry/templates';
 import { useStore } from '../store';
+import { SideSwitch } from './ArtProps';
 import { Inspector } from './Inspector';
 import { Check, NumField, Section } from './ui';
 
@@ -24,6 +25,7 @@ export function StructureProps() {
 
   return (
     <>
+      <SideSwitch />
       <Inspector />
 
       <Section title="Molde">

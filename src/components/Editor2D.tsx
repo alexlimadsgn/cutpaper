@@ -40,7 +40,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
   const s = useStore();
   const { graph } = s.doc;
   // Interior (verso): a planificação aparece espelhada, como ao virar a folha; só os objetos do verso
-  const back = s.mode === 'art' && s.artSide === 'in' && !compact;
+  const back = (s.mode === 'art' || s.mode === 'structure') && s.artSide === 'in' && !compact;
   const mx = back ? -1 : 1;
   const toPaper = (p: Vec2): Vec2 => [p[0] * mx, p[1]];
   const objects = s.doc.objects.filter((o) => (o.side === 'in') === back);
@@ -236,7 +236,9 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
   const onPointerDown = (e: RPointerEvent<SVGSVGElement>) => {
     lastDown.current = e.target as Element;
     svgRef.current!.setPointerCapture(e.pointerId);
-    const p = toMM(e.clientX, e.clientY);
+    // na Edição, trabalha nas coordenadas do papel (desfaz o espelho do verso)
+    const p0 = toMM(e.clientX, e.clientY);
+    const p = s.mode === 'structure' ? toPaper(p0) : p0;
     if (e.button === 1 || space) {
       act.current = { kind: 'pan', client: [e.clientX, e.clientY], view: v };
       return;
@@ -346,7 +348,8 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
   };
 
   const onPointerMove = (e: RPointerEvent<SVGSVGElement>) => {
-    const p = toMM(e.clientX, e.clientY);
+    const p0 = toMM(e.clientX, e.clientY);
+    const p = s.mode === 'structure' ? toPaper(p0) : p0;
     const a = act.current;
     if (!a) {
       if (isLineTool) {
@@ -467,7 +470,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
     if (isLineTool) return setDraw({ start: null, hover: null });
     const target = lastDown.current ?? (e.target as Element);
     if (target.getAttribute('data-kind') !== 'edge') return;
-    const { g, vid } = splitEdge(graph, target.getAttribute('data-id')!, toMM(e.clientX, e.clientY));
+    const { g, vid } = splitEdge(graph, target.getAttribute('data-id')!, toPaper(toMM(e.clientX, e.clientY)));
     s.commit({ graph: g });
     s.select({ vertices: [vid] });
   };
@@ -736,6 +739,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
         })}
         </g>
 
+        <g transform={back ? 'scale(-1 1)' : undefined}>
         {dims.map((d) => {
           const label = `${(+d.len.toFixed(1)).toString().replace('.', ',')}`;
           const w = (label.length * 6.2 + 10) * px, h = 15 * px;
@@ -751,7 +755,9 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
                 <title>Clique para editar a medida (mm)</title>
               </rect>
               <text
-                x={d.x} y={d.y + 3.6 * px} textAnchor="middle" fontWeight={600}
+                // no verso o texto é "desespelhado" para continuar legível
+                x={back ? -d.x : d.x} y={d.y + 3.6 * px} textAnchor="middle" fontWeight={600}
+                transform={back ? 'scale(-1 1)' : undefined}
                 // style (não atributo): o CSS global da página sobrepõe o atributo font-size
                 style={{ fontSize: 10.5 * px }}
                 fill="#334155" pointerEvents="none"
@@ -780,6 +786,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
               />
             );
           })}
+        </g>
 
         {/* caixa de seleção do objeto: 8 alças de tamanho + alça de rotação */}
         {artMode && selObj && (() => {
@@ -818,6 +825,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
             : <rect x={x} y={y} width={w} height={h} {...st} />;
         })()}
 
+        <g transform={back ? 'scale(-1 1)' : undefined}>
         {draw.start && draw.hover && (
           <line
             x1={draw.start[0]} y1={draw.start[1]} x2={draw.hover.p[0]} y2={draw.hover.p[1]}
@@ -839,7 +847,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
           const len = Math.hypot(x - draw.start[0], y - draw.start[1]);
           const ang = (Math.atan2(-(y - draw.start[1]), x - draw.start[0]) * 180) / Math.PI;
           return (
-            <text x={x + 10 * px} y={y - 10 * px} style={{ fontSize: 11 * px }} fill="#334155" stroke="white" strokeWidth={3 * px} paintOrder="stroke" pointerEvents="none">
+            <text x={back ? -(x + 10 * px) : x + 10 * px} y={y - 10 * px} transform={back ? 'scale(-1 1)' : undefined} style={{ fontSize: 11 * px }} fill="#334155" stroke="white" strokeWidth={3 * px} paintOrder="stroke" pointerEvents="none">
               {len.toFixed(1)} mm · {((ang + 360) % 360).toFixed(0)}°
             </text>
           );
@@ -858,13 +866,14 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
             fill="rgba(59,130,246,0.08)" stroke="#3B82F6" strokeWidth={1} vectorEffect="non-scaling-stroke" pointerEvents="none"
           />
         )}
+        </g>
       </svg>
 
       {editDim && graph.e[editDim.id] && (() => {
         const e = graph.e[editDim.id];
-        const mx = (graph.v[e.a].x + graph.v[e.b].x) / 2, my = (graph.v[e.a].y + graph.v[e.b].y) / 2;
+        const midX = ((graph.v[e.a].x + graph.v[e.b].x) / 2) * mx, my = (graph.v[e.a].y + graph.v[e.b].y) / 2;
         return (
-          <Box position="absolute" left={`${(mx - vb[0]) * v.scale}px`} top={`${(my - vb[1]) * v.scale}px`} transform="translate(-50%, -50%)" zIndex={2}>
+          <Box position="absolute" left={`${(midX - vb[0]) * v.scale}px`} top={`${(my - vb[1]) * v.scale}px`} transform="translate(-50%, -50%)" zIndex={2}>
             <input
               ref={dimInput}
               value={editDim.value}
