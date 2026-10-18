@@ -65,7 +65,7 @@ export function ObjectProps({ o }: { o: ArtObject }) {
           defaultValue={o.name}
           onBlur={(e) => e.target.value !== o.name && up({ name: e.target.value })}
           onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-          style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontSize: 12, fontWeight: 600, padding: '0 6px', color: '#111827' }}
+          style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontSize: 12, fontWeight: 600, padding: '0 6px', color: 'var(--chakra-colors-gray-900)' }}
         />
         <IconButton size="2xs" variant="ghost" aria-label="Duplicar" title="Duplicar (Ctrl+D)" onClick={() => s.duplicateObject(o.id)}><Copy size={13} /></IconButton>
         <IconButton size="2xs" variant="ghost" aria-label="Excluir" title="Excluir (Del)" onClick={() => s.deleteObject(o.id)}><Trash2 size={13} /></IconButton>

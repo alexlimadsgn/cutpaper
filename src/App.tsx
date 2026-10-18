@@ -1,9 +1,10 @@
 import { Box, Button, Flex, Heading, IconButton, Menu, Portal, Text } from '@chakra-ui/react';
 import {
-  Box as BoxIcon, ChevronDown, Circle, Download, FileCode, FilePlus, FileText, FolderOpen, Info, Paintbrush, Save, Spline, Square, Type, FoldVertical, ImagePlus, Map as MapIcon, Minimize2, MousePointer2, Redo2, Scissors, Undo2, Upload,
+  Box as BoxIcon, ChevronDown, Circle, Download, FileCode, FilePlus, FileText, FolderOpen, Info, Paintbrush, Save, Spline, Square, Type, FoldVertical, ImagePlus, Map as MapIcon, Minimize2, Moon, Sun, MousePointer2, Redo2, Scissors, Undo2, Upload,
 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { AboutDialog } from './components/AboutDialog';
+import { toggleTheme, useTheme } from './theme';
 import { ArtProps } from './components/ArtProps';
 import { Editor2D } from './components/Editor2D';
 import { LayersPanel } from './components/LayersPanel';
@@ -32,7 +33,7 @@ export default function App() {
         <ToolRail />
         <LayersPanel />
         <CanvasArea />
-        <Box w="248px" flexShrink={0} bg="white" borderLeftWidth="1px" borderColor="gray.200" overflowY="auto" pb={6}>
+        <Box w="248px" flexShrink={0} bg="bg.panel" borderLeftWidth="1px" borderColor="gray.200" overflowY="auto" pb={6}>
           {s.mode === 'structure' && <StructureProps />}
           {s.mode === 'art' && <ArtProps />}
           {s.mode === 'verify' && <VerifyProps />}
@@ -40,6 +41,16 @@ export default function App() {
       </Flex>
       <StatusBar />
     </Flex>
+  );
+}
+
+function ThemeToggle() {
+  const dark = useTheme() === 'dark';
+  const label = dark ? 'Tema claro' : 'Tema escuro';
+  return (
+    <IconButton size="xs" variant="ghost" aria-label={label} title={label} onClick={toggleTheme}>
+      {dark ? <Sun size={14} /> : <Moon size={14} />}
+    </IconButton>
   );
 }
 
@@ -80,7 +91,7 @@ function TopBar() {
   };
 
   return (
-    <Flex h="44px" flexShrink={0} align="center" px={{ base: 2, md: 3 }} gap={{ base: 1, md: 2 }} bg="white" borderBottomWidth="1px" borderColor="gray.200">
+    <Flex h="44px" flexShrink={0} align="center" px={{ base: 2, md: 3 }} gap={{ base: 1, md: 2 }} bg="bg.panel" borderBottomWidth="1px" borderColor="gray.200">
       <Flex align="center" gap={{ base: 1, md: 3 }} w={{ base: 'auto', lg: '230px' }} flexShrink={0}>
         <Flex align="center" gap={2}>
           <Box w="22px" h="22px" borderRadius="6px" bg="red.500" color="white" display="grid" placeItems="center"><Scissors size={13} /></Box>
@@ -158,6 +169,7 @@ function TopBar() {
             </Menu.Positioner>
           </Portal>
         </Menu.Root>
+        <ThemeToggle />
       </Flex>
     </Flex>
   );
@@ -171,7 +183,7 @@ function RailButton({ label, active, onClick, children }: { label: string; activ
       size="sm"
       variant="ghost"
       bg={active ? 'gray.900' : undefined}
-      color={active ? 'white' : 'gray.700'}
+      color={active ? 'gray.50' : 'gray.700'}
       _hover={{ bg: active ? 'gray.900' : 'gray.100' }}
       onClick={onClick}
     >
@@ -186,7 +198,7 @@ function ToolRail() {
   const [about, setAbout] = useState(false);
   const select = <RailButton label="Selecionar (V)" active={s.tool === 'select'} onClick={() => s.setTool('select')}><MousePointer2 size={16} /></RailButton>;
   return (
-    <Flex direction="column" align="center" gap="2px" w="44px" py={2} flexShrink={0} bg="white" borderRightWidth="1px" borderColor="gray.200">
+    <Flex direction="column" align="center" gap="2px" w="44px" py={2} flexShrink={0} bg="bg.panel" borderRightWidth="1px" borderColor="gray.200">
       {select}
       {s.mode === 'structure' && (
         <>
@@ -224,15 +236,15 @@ function CanvasArea() {
       )}
       {!main3D && <ModeSelect />}
       {miniOpen ? (
-        <Box position="absolute" top={3} right={3} w="min(300px, 32%)" h="min(230px, 30%)" minW="160px" minH="120px" bg="white" borderRadius="lg" shadow="lg" borderWidth="1px" borderColor="gray.200" overflow="hidden">
-          <Flex position="absolute" top={0} left={0} right={0} zIndex={1} justify="space-between" align="center" px={2} py={1} bg="whiteAlpha.800">
+        <Box position="absolute" top={3} right={3} w="min(300px, 32%)" h="min(230px, 30%)" minW="160px" minH="120px" bg="bg.panel" borderRadius="lg" shadow="lg" borderWidth="1px" borderColor="gray.200" overflow="hidden">
+          <Flex position="absolute" top={0} left={0} right={0} zIndex={1} justify="space-between" align="center" px={2} py={1} bg="bg.panel/80">
             <Text fontSize="xs" fontWeight="600" color="gray.600">{main3D ? 'Planificação' : 'Montagem 3D'}</Text>
             <IconButton size="2xs" variant="ghost" aria-label="Minimizar" onClick={() => setMiniOpen(false)}><Minimize2 size={12} /></IconButton>
           </Flex>
           <Box position="absolute" inset={0}>{main3D ? <Editor2D compact /> : <Preview3D compact />}</Box>
         </Box>
       ) : (
-        <Button position="absolute" top={3} right={3} size="sm" variant="outline" bg="white" shadow="sm" onClick={() => setMiniOpen(true)}>
+        <Button position="absolute" top={3} right={3} size="sm" variant="outline" bg="bg.panel" shadow="sm" onClick={() => setMiniOpen(true)}>
           {main3D ? <MapIcon size={14} /> : <BoxIcon size={14} />} {main3D ? 'Planificação' : '3D'}
         </Button>
       )}
@@ -254,7 +266,7 @@ function ModeSelect() {
     <Box position="absolute" top={3} left={3} zIndex={2}>
       <Menu.Root>
         <Menu.Trigger asChild>
-          <Button size="xs" variant="outline" bg="white" shadow="xs" title="Modo (Tab alterna)">
+          <Button size="xs" variant="outline" bg="bg.panel" shadow="xs" title="Modo (Tab alterna)">
             <cur.icon size={15} /> {cur.label} <ChevronDown size={14} />
           </Button>
         </Menu.Trigger>
@@ -282,7 +294,7 @@ function StatusBar() {
   const errors = issues.filter((i) => i.severity === 'error').length;
   const warnings = issues.filter((i) => i.severity === 'warning').length;
   return (
-    <Flex h="24px" flexShrink={0} align="center" px={3} gap={4} fontSize="11px" color="gray.500" bg="white" borderTopWidth="1px" borderColor="gray.200">
+    <Flex h="24px" flexShrink={0} align="center" px={3} gap={4} fontSize="11px" color="gray.500" bg="bg.panel" borderTopWidth="1px" borderColor="gray.200">
       <span>{dieline.faces.length} faces · {Object.keys(s.doc.graph.e).length} linhas · {s.doc.objects.length} objetos</span>
       <Box as="span" display={{ base: 'none', lg: 'inline' }}>Molde {(viewBox[2] - 4).toFixed(0)} × {(viewBox[3] - 4).toFixed(0)} mm (com sangria)</Box>
       <Box flex={1} />

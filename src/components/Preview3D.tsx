@@ -1,5 +1,6 @@
 import { Line, OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
+import { useTheme } from '../theme';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { buildBackSvg, buildSvg } from '../export/svg';
@@ -160,14 +161,15 @@ function Box3D() {
 export function Preview3D({ compact = false }: { compact?: boolean }) {
   // na miniatura a câmera fica mais afastada para caber a caixa inteira
   const k = compact ? 1.3 : 1;
+  const dark = useTheme() === 'dark';
   return (
     <Canvas camera={{ position: [2.2 * k, 2 * k, 2.8 * k], fov: 35 }} dpr={[1, 2]}>
-      <color attach="background" args={['#f4f4f5']} />
+      <color attach="background" args={[dark ? '#1b1b1e' : '#f4f4f5']} />
       <ambientLight intensity={1.4} />
       <directionalLight position={[3, 5, 2]} intensity={1.6} />
       <directionalLight position={[-3, 2, -2]} intensity={0.6} />
       <Box3D />
-      <gridHelper args={[6, 30, '#d4d4d8', '#e4e4e7']} position={[0, -0.001, 0]} />
+      <gridHelper key={dark ? 'd' : 'l'} args={[6, 30, dark ? '#3a3a40' : '#d4d4d8', dark ? '#2a2a2f' : '#e4e4e7']} position={[0, -0.001, 0]} />
       <OrbitControls makeDefault target={[0, 0.2, 0]} />
     </Canvas>
   );

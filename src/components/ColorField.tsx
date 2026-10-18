@@ -35,7 +35,7 @@ export function ColorField({ label, value, onChange }: { label?: string; value?:
             else setHex(value ?? '');
           }}
           onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-          style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontSize: 12, fontFamily: 'ui-monospace, monospace', color: '#1f2937' }}
+          style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontSize: 12, fontFamily: 'ui-monospace, monospace', color: 'var(--chakra-colors-gray-800)' }}
         />
         {value && (
           <IconButton size="2xs" variant="ghost" aria-label="Remover cor" title="Remover cor" onClick={() => onChange(undefined)}>

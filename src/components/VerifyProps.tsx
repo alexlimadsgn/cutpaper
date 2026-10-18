@@ -238,7 +238,7 @@ export function VerifyProps() {
                                 <Button size="2xs" colorPalette="orange" onClick={(e) => { e.stopPropagation(); fix(i); }}>Girar 180°</Button>
                               )}
                               {(i.object || i.face) && (
-                                <Button size="2xs" variant="outline" bg="white" onClick={(e) => { e.stopPropagation(); goEdit(i); }}>
+                                <Button size="2xs" variant="outline" bg="bg.panel" onClick={(e) => { e.stopPropagation(); goEdit(i); }}>
                                   Editar no modo {i.object ? 'Arte' : 'Edição'}
                                 </Button>
                               )}

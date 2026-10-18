@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 
 export const Panel = (props: BoxProps) => (
-  <Box bg="white" borderRadius="xl" borderWidth="1px" borderColor="gray.200" p={6} overflowY="auto" {...props} />
+  <Box bg="bg.panel" borderRadius="xl" borderWidth="1px" borderColor="gray.200" p={6} overflowY="auto" {...props} />
 );
 
 // ---------- seções recolhíveis (estado lembrado neste navegador) ----------
@@ -103,7 +103,7 @@ export function NumField({ label, prefix, suffix, value, onChange, step = 1, min
           if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
           if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); nudge(e.key === 'ArrowUp' ? 1 : -1, e.shiftKey); }
         }}
-        style={{ flex: 1, minWidth: 0, width: '100%', border: 'none', outline: 'none', background: 'transparent', fontSize: 12, color: '#1f2937' }}
+        style={{ flex: 1, minWidth: 0, width: '100%', border: 'none', outline: 'none', background: 'transparent', fontSize: 12, color: 'var(--chakra-colors-gray-800)' }}
       />
       {suffix && <Text as="span" fontSize="11px" color="gray.400" flexShrink={0}>{suffix}</Text>}
     </Flex>
@@ -160,7 +160,7 @@ export function CompactSelect({ value, onChange, children, title, fontFamily }: 
         onChange={(e) => onChange(e.target.value)}
         style={{
           appearance: 'none', width: '100%', height: '100%', border: 'none', outline: 'none', background: 'transparent',
-          fontSize: 12, padding: '0 22px 0 8px', color: '#1f2937', fontFamily, cursor: 'pointer',
+          fontSize: 12, padding: '0 22px 0 8px', color: 'var(--chakra-colors-gray-800)', fontFamily, cursor: 'pointer',
         }}
       >
         {children}
@@ -186,7 +186,7 @@ export function IconToggles({ items }: {
           display="grid"
           placeItems="center"
           borderRadius="4px"
-          bg={it.active ? 'white' : 'transparent'}
+          bg={it.active ? 'bg.panel' : 'transparent'}
           boxShadow={it.active ? 'xs' : undefined}
           color={it.active ? 'gray.900' : 'gray.500'}
           _hover={{ color: 'gray.900' }}

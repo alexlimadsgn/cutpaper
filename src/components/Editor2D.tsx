@@ -891,16 +891,16 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
               onPointerDown={(ev) => ev.stopPropagation()}
               style={{
                 width: 78, padding: '3px 6px', fontSize: 13, fontWeight: 600, textAlign: 'center',
-                border: '2px solid #F59E0B', borderRadius: 8, outline: 'none', background: 'white', boxShadow: '0 4px 12px rgba(0,0,0,.15)',
+                border: '2px solid #F59E0B', borderRadius: 8, outline: 'none', background: 'var(--chakra-colors-bg-panel)', color: 'var(--chakra-colors-fg)', boxShadow: '0 4px 12px rgba(0,0,0,.15)',
               }}
             />
-            <Text fontSize="2xs" color="gray.600" textAlign="center" mt="2px" bg="whiteAlpha.900" borderRadius="sm">mm · Enter</Text>
+            <Text fontSize="2xs" color="gray.600" textAlign="center" mt="2px" bg="bg.panel/90" borderRadius="sm">mm · Enter</Text>
           </Box>
         );
       })()}
 
       {editable && isLineTool && (
-        <Text position="absolute" top={3} left="50%" transform="translateX(-50%)" fontSize="xs" bg="white" px={3} py={1} borderRadius="full" shadow="sm" color="gray.600">
+        <Text position="absolute" top={3} left="50%" transform="translateX(-50%)" fontSize="xs" bg="bg.panel" px={3} py={1} borderRadius="full" shadow="sm" color="gray.600">
           Clique para desenhar {s.tool === 'cut' ? 'corte' : 'vinco'} · Shift = 45° · Esc/duplo clique encerra
         </Text>
       )}
@@ -910,12 +910,12 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
         </Text>
       )}
       {artMode && s.tool !== 'select' && (
-        <Text position="absolute" top={3} left="50%" transform="translateX(-50%)" fontSize="xs" bg="white" px={3} py={1} borderRadius="full" shadow="sm" color="gray.600">
+        <Text position="absolute" top={3} left="50%" transform="translateX(-50%)" fontSize="xs" bg="bg.panel" px={3} py={1} borderRadius="full" shadow="sm" color="gray.600">
           {s.tool === 'text' ? 'Clique para inserir um texto' : `Arraste para desenhar ${s.tool === 'rect' ? 'um retângulo' : 'uma elipse'} (clique = tamanho padrão)`} · fica recortado na face onde começar
         </Text>
       )}
 
-      {!compact && <Group attached position="absolute" bottom={3} left={3} bg="white" borderRadius="md" shadow="xs">
+      {!compact && <Group attached position="absolute" bottom={3} left={3} bg="bg.panel" borderRadius="md" shadow="xs">
         <IconButton size="xs" variant="outline" aria-label="Diminuir zoom" onClick={() => setView((c) => c && { ...c, scale: c.scale / 1.25 })}>−</IconButton>
         <Button size="xs" variant="outline" minW="52px" fontSize="11px" onClick={fit} title="Ajustar à tela">{Math.round(v.scale * 100 / 3.78)}%</Button>
         <IconButton size="xs" variant="outline" aria-label="Aumentar zoom" onClick={() => setView((c) => c && { ...c, scale: c.scale * 1.25 })}>+</IconButton>

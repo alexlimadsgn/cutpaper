@@ -128,7 +128,7 @@ export function LayersPanel() {
         onClick={() => selectObject(o)}
         opacity={o.hidden ? 0.5 : 1}
       >
-        <Icon size={12} color="#64748b" />
+        <Icon size={12} color="var(--chakra-colors-gray-500)" />
         <Text flex={1} truncate color="gray.700">{o.type === 'text' ? o.text?.split('\n')[0] || o.name : o.name}</Text>
         <Box
           as="button"
@@ -148,7 +148,7 @@ export function LayersPanel() {
 
   if (minimized)
     return (
-      <Flex direction="column" align="center" w="36px" flexShrink={0} bg="white" borderRightWidth="1px" borderColor="gray.200" py={2} display={{ base: 'none', lg: 'flex' }}>
+      <Flex direction="column" align="center" w="36px" flexShrink={0} bg="bg.panel" borderRightWidth="1px" borderColor="gray.200" py={2} display={{ base: 'none', lg: 'flex' }}>
         <IconButton size="xs" variant="ghost" aria-label="Mostrar camadas" title="Mostrar camadas" onClick={() => setMinimized(false)}>
           <PanelLeftOpen size={15} />
         </IconButton>
@@ -163,7 +163,7 @@ export function LayersPanel() {
     );
 
   return (
-    <Flex direction="column" w="220px" flexShrink={0} bg="white" borderRightWidth="1px" borderColor="gray.200" minH={0} display={{ base: 'none', lg: 'flex' }}>
+    <Flex direction="column" w="220px" flexShrink={0} bg="bg.panel" borderRightWidth="1px" borderColor="gray.200" minH={0} display={{ base: 'none', lg: 'flex' }}>
       <Flex pl={4} pr={1} py={2} borderBottomWidth="1px" borderColor="gray.100" align="center" gap={1}>
         <Box flex={1} minW={0}>
           <Heading size="xs" fontWeight="700" textTransform="uppercase" letterSpacing="0.06em" color="gray.600">Camadas</Heading>
@@ -221,12 +221,12 @@ export function LayersPanel() {
                 {chevron(f.id)}
                 <Box
                   w="14px" h="14px" flexShrink={0} borderRadius="3px" borderWidth="1px" borderColor="gray.300"
-                  bg={color ?? (art.faceImages[f.id] ? 'gray.200' : 'white')}
+                  bg={color ?? (art.faceImages[f.id] ? 'gray.200' : 'bg.panel')}
                 />
                 <Text flex={1} truncate color={bad.has(f.id) ? 'red.600' : 'gray.800'}>{f.name}</Text>
                 {collapsed.has(f.id) && <Text fontSize="2xs" color="gray.400">{count(f.id)}</Text>}
-                {!f.parent && <Anchor size={13} color="#64748b" />}
-                {s.faceImages[f.id] && <ImageIcon size={13} color="#64748b" />}
+                {!f.parent && <Anchor size={13} color="var(--chakra-colors-gray-500)" />}
+                {s.faceImages[f.id] && <ImageIcon size={13} color="var(--chakra-colors-gray-500)" />}
                 {bad.has(f.id) && <CircleAlert size={13} color="#dc2626" />}
               </Flex>
               {!collapsed.has(f.id) && (objsOf.get(f.id) ?? []).map((o) => objectRow(o, depth + 2))}

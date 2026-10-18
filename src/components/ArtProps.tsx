@@ -78,7 +78,7 @@ export function SideSwitch() {
 export function ImageSlot({ url, onPick, onClear }: { label?: string; url?: string; onPick: () => void; onClear: () => void }) {
   return (
     <Flex h="36px" align="center" gap={2} px={1.5} bg="gray.50" borderRadius="6px">
-      <Box w="26px" h="26px" borderRadius="4px" overflow="hidden" flexShrink={0} bg="white" borderWidth="1px" borderColor="blackAlpha.200" display="grid" placeItems="center" color="gray.400">
+      <Box w="26px" h="26px" borderRadius="4px" overflow="hidden" flexShrink={0} bg="bg.panel" borderWidth="1px" borderColor="blackAlpha.200" display="grid" placeItems="center" color="gray.400">
         {url ? <Image src={url} w="full" h="full" objectFit="cover" /> : <ImagePlus size={13} />}
       </Box>
       <Text as="button" flex={1} textAlign="left" fontSize="12px" color={url ? 'gray.800' : 'gray.500'} onClick={onPick}>
