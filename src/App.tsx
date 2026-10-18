@@ -120,6 +120,7 @@ function TopBar() {
       <Box flex={1} />
 
       <Flex gap={{ base: 1, md: 2 }} align="center" flexShrink={0}>
+        <ThemeToggle />
         <Button
           size="xs"
           variant={s.mode === 'verify' ? 'solid' : 'ghost'}
@@ -169,7 +170,6 @@ function TopBar() {
             </Menu.Positioner>
           </Portal>
         </Menu.Root>
-        <ThemeToggle />
       </Flex>
     </Flex>
   );

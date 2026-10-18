@@ -16,8 +16,8 @@ const DARK_GRAY: Record<string, string> = {
 };
 const DARK_TINTS: Record<string, string> = {
   'blue-50': '#16233a', 'blue-100': '#1c2e4d', 'blue-700': '#93b8f5', 'blue-800': '#aac8f8', 'blue-900': '#c7dbfb',
-  'red-50': '#3a1a1c', 'red-100': '#4a2023', 'red-600': '#f87171', 'red-700': '#fca5a5',
-  'green-50': '#14301f', 'green-700': '#86efac', 'orange-50': '#3a2612', 'orange-600': '#fb923c',
+  'red-50': '#3a1a1c', 'red-100': '#4a2023', 'red-700': '#fca5a5',
+  'green-50': '#14301f', 'green-700': '#86efac', 'orange-50': '#3a2612',
   'blackAlpha-200': 'rgba(255,255,255,0.14)',
 };
 const darkStyle = document.createElement('style');
