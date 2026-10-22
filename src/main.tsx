@@ -3,10 +3,15 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import { startAutosave } from './io/project';
+import { useStore } from './store';
 import './theme';
 
 // restaura o último projeto e passa a salvar automaticamente no navegador
+// primeira visita (sem projeto salvo): abre a galeria de modelos
+let firstVisit = false;
+try { firstVisit = !localStorage.getItem('cutpaper:autosave'); } catch { /* sem armazenamento */ }
 startAutosave();
+if (firstVisit) useStore.getState().setGalleryOpen(true);
 
 // Tema escuro: a escala de cinza é invertida sob .dark, então os componentes que usam gray.* se adaptam
 // sozinhos. Os tokens semânticos do Chakra recebem valores fixos para não herdarem a inversão.

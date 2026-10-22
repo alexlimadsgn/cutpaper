@@ -72,7 +72,7 @@ export function Inspector() {
                   value={f.step}
                   onChange={(v) => s.commit({ graph: withSteps(g, dieline, Object.fromEntries(creaseIds.map((id) => [id, Math.max(1, Math.round(v))]))) })}
                 />
-                <Hint>Dobra "{f.name}" · etapa {g.e[creaseIds[0]].step ? 'definida por você' : 'automática'}</Hint>
+                <Hint>Dobra "{f.name}" · etapa {g.e[creaseIds[0]].step ? 'definida' : 'automática'}</Hint>
               </Box>
             )}
           </Section>

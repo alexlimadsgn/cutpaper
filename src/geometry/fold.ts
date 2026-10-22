@@ -69,12 +69,14 @@ export function findConflicts(faces: Face[]): Conflict[] {
   const mats = foldMatrices(faces, 1);
   const byId = new Map(faces.map((f) => [f.id, f]));
   const depth = (f: Face): number => (f.parent ? 1 + depth(byId.get(f.parent)!) : 0);
+  // só as folhas da árvore de dobras (abas) são coladas/encaixadas; paredes com filhos não são abas
+  const parents = new Set(faces.map((f) => f.parent).filter(Boolean));
   const world = faces.map((f) => {
     const m = mats.get(f.id)!;
     const pts = f.poly.map(([x, y]) => new THREE.Vector3(x, y, 0).applyMatrix4(m));
     const normal = new THREE.Vector3(0, 0, 1).transformDirection(m);
     const box = new THREE.Box3().setFromPoints(pts).expandByScalar(PLANE_TOL);
-    return { f, pts, normal, d: normal.dot(pts[0]), box, depth: depth(f), area: Math.abs(f.area) };
+    return { f, pts, normal, d: normal.dot(pts[0]), box, depth: depth(f), area: Math.abs(f.area), leaf: !parents.has(f.id) };
   });
   type W = (typeof world)[number];
 
@@ -102,10 +104,11 @@ export function findConflicts(faces: Face[]): Conflict[] {
 
     // abas irmãs ocupando o mesmo lugar
     for (const { B, inter } of neighbors)
-      if (B.depth === A.depth && A.f.parent && B.f.parent) out.push({ face: A.f.id, other: B.f.id, kind: 'overlap', area: inter });
+      if (B.depth === A.depth && A.f.parent && B.f.parent && A.leaf && B.leaf) out.push({ face: A.f.id, other: B.f.id, kind: 'overlap', area: inter });
 
     // cobertura pelos painéis mais próximos da base em que a aba encosta
-    const bigger = neighbors.filter((n) => n.B.depth < A.depth);
+    if (!A.leaf) continue;
+    const bigger = neighbors.filter((n) => n.B.depth < A.depth || !n.B.leaf);
     if (!bigger.length) continue;
     const support = Clipper.Union(bigger.flatMap((n) => toPaths([proj(n.B.pts)])), undefined, FillRule.NonZero);
     const covered = areaOf(fromPaths(Clipper.Intersect(pa, support, FillRule.NonZero)));

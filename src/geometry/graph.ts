@@ -22,7 +22,7 @@ export interface Graph {
   next: number;
 }
 
-export interface Seg { a: Vec2; b: Vec2; type: EdgeType; angle?: number }
+export interface Seg { a: Vec2; b: Vec2; type: EdgeType; angle?: number; step?: number }
 
 export const DEFAULT_ANGLE = 90;
 const idNum = (id: string) => +id.slice(1);
@@ -48,7 +48,7 @@ export function graphFromSegments(segs: Seg[], tol = 0.01): Graph {
     const a = newId(g, 'v'), b = newId(g, 'v');
     g.v[a] = { x: s.a[0], y: s.a[1] };
     g.v[b] = { x: s.b[0], y: s.b[1] };
-    g.e[newId(g, 'e')] = { a, b, type: s.type, angle: s.angle ?? DEFAULT_ANGLE };
+    g.e[newId(g, 'e')] = { a, b, type: s.type, angle: s.angle ?? DEFAULT_ANGLE, ...(s.step ? { step: s.step } : {}) };
   }
   return normalize(g, tol);
 }
@@ -60,7 +60,7 @@ export function addSegments(g0: Graph, segs: Seg[], tol = 0.01): Graph {
     const a = newId(g, 'v'), b = newId(g, 'v');
     g.v[a] = { x: s.a[0], y: s.a[1] };
     g.v[b] = { x: s.b[0], y: s.b[1] };
-    g.e[newId(g, 'e')] = { a, b, type: s.type, angle: s.angle ?? DEFAULT_ANGLE };
+    g.e[newId(g, 'e')] = { a, b, type: s.type, angle: s.angle ?? DEFAULT_ANGLE, ...(s.step ? { step: s.step } : {}) };
   }
   return normalize(g, tol);
 }
@@ -170,6 +170,7 @@ export function normalize(g0: Graph, tol = 0.01, pass = 0): Graph {
     if (e.type === 'crease' && g.e[prev].type === 'cut') {
       g.e[prev].type = 'crease';
       g.e[prev].angle = e.angle;
+      if (e.step) g.e[prev].step = e.step;
     }
     delete g.e[eid];
   }

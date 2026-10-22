@@ -1,9 +1,11 @@
 import { Box, Button, Flex, Heading, IconButton, Menu, Portal, Text } from '@chakra-ui/react';
 import {
-  Box as BoxIcon, ChevronDown, Circle, Download, FileCode, FilePlus, FileText, FolderOpen, Info, Paintbrush, Save, Spline, Square, Type, FoldVertical, ImagePlus, Map as MapIcon, Minimize2, Moon, Sun, MousePointer2, Redo2, Scissors, Undo2, Upload,
+  Box as BoxIcon, ChevronDown, Circle, Download, FileCode, FilePlus, FileText, FolderOpen, Info, Paintbrush, Save, Spline, Square, Type, FoldVertical, ImagePlus, LayoutGrid, Map as MapIcon, Minimize2, Moon, Sun, MousePointer2, Redo2, Scissors, Undo2, Upload,
 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { AboutDialog } from './components/AboutDialog';
+import { Gallery } from './components/Gallery';
+import { ImposeDialog } from './components/ImposeDialog';
 import { toggleTheme, useTheme } from './theme';
 import { ArtProps } from './components/ArtProps';
 import { Editor2D } from './components/Editor2D';
@@ -29,6 +31,7 @@ export default function App() {
   return (
     <Flex direction="column" h="100vh" bg="gray.100">
       <TopBar />
+      <Gallery />
       <Flex flex={1} minH={0}>
         <ToolRail />
         <LayersPanel />
@@ -58,6 +61,7 @@ function TopBar() {
   const s = useStore();
   const { dieline } = useDieline();
   const [busy, setBusy] = useState<string | null>(null);
+  const [impose, setImpose] = useState(false);
   const stamp = () => new Date().toISOString().slice(0, 10);
   const input = () => ({ ...s, objects: s.doc.objects, dieline });
 
@@ -104,8 +108,8 @@ function TopBar() {
           <Portal>
             <Menu.Positioner>
               <Menu.Content minW="240px">
-                <Menu.Item value="new" onSelect={() => confirm('Começar um projeto novo? O atual será substituído (salve antes se precisar).') && s.reset()}>
-                  <FilePlus size={15} /> Novo projeto
+                <Menu.Item value="new" onSelect={() => s.setGalleryOpen(true)}>
+                  <FilePlus size={15} /> Novo projeto…
                 </Menu.Item>
                 <Menu.Item value="open" onSelect={() => openProjectFile((m) => alert(m))}><FolderOpen size={15} /> Abrir projeto (.cutpaper)…</Menu.Item>
                 <Menu.Item value="save" onSelect={saveProjectFile}><Save size={15} /> Salvar projeto (.cutpaper)</Menu.Item>
@@ -146,8 +150,15 @@ function TopBar() {
                 <Menu.Item value="pdf" onSelect={exportPdf}>
                   <FileText size={15} />
                   <Box>
-                    <Text fontWeight="600">PDF para gráfica</Text>
+                    <Text fontWeight="600">PDF da peça (gráfica)</Text>
                     <Text fontSize="xs" color="gray.500">Camadas · CutContour/Crease · arte 300 dpi</Text>
+                  </Box>
+                </Menu.Item>
+                <Menu.Item value="impose" onSelect={() => setImpose(true)}>
+                  <LayoutGrid size={15} />
+                  <Box>
+                    <Text fontWeight="600">PDF montado na folha…</Text>
+                    <Text fontSize="xs" color="gray.500">A4, A3… várias peças por folha</Text>
                   </Box>
                 </Menu.Item>
                 <Menu.Item value="svg" onSelect={exportSvg}>
@@ -170,6 +181,7 @@ function TopBar() {
             </Menu.Positioner>
           </Portal>
         </Menu.Root>
+        <ImposeDialog open={impose} onClose={() => setImpose(false)} />
       </Flex>
     </Flex>
   );
@@ -215,6 +227,7 @@ function ToolRail() {
         </>
       )}
       <Box flex={1} />
+      <RailButton label="Modelos (novo projeto)" onClick={() => s.setGalleryOpen(true)}><LayoutGrid size={16} /></RailButton>
       <RailButton label="Sobre o CutPaper" onClick={() => setAbout(true)}><Info size={16} /></RailButton>
       <AboutDialog open={about} onClose={() => setAbout(false)} />
     </Flex>

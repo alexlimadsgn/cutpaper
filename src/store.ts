@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { normalize, type Graph } from './geometry/graph';
-import { TEMPLATES, type TemplateId } from './geometry/templates';
+import { PRESETS, TEMPLATES, type TemplateId } from './geometry/templates';
 import type { BoxParams } from './geometry/types';
 import { fitText, newObjectId, type ArtObject } from './art/objects';
 
@@ -109,6 +109,11 @@ interface State {
 
   setParam: <K extends keyof BoxParams>(k: K, v: BoxParams[K]) => void;
   regenerate: () => void;
+  /** Troca o modelo paramétrico (mantém a arte) com as medidas dadas ou as do modelo. */
+  setTemplate: (id: TemplateId, params?: Partial<BoxParams>) => void;
+  /** Galeria de modelos (tela inicial / novo projeto). */
+  galleryOpen: boolean;
+  setGalleryOpen: (v: boolean) => void;
   setBleed: (v: number) => void;
   toggleLayer: (k: keyof Layers) => void;
   setFullImage: (url?: string) => void;
@@ -138,7 +143,8 @@ interface State {
   setCropEdit: (id?: string) => void;
   setGrid: (v: number) => void;
   setShowDims: (v: boolean) => void;
-  reset: () => void;
+  /** Projeto novo a partir de um modelo da galeria. */
+  reset: (presetId?: string) => void;
 }
 
 const DEFAULT_PARAMS: BoxParams = { width: 100, depth: 80, height: 40, tuck: 15, glue: 20, thickness: 0.5 };
@@ -235,6 +241,14 @@ export const useStore = create<State>((set, get) => ({
     commit(fromTemplate(template, params), 'template');
     set((s) => ({ sel: EMPTY_SEL, importInfo: undefined, fitToken: wasTemplate ? s.fitToken : s.fitToken + 1 }));
   },
+  setTemplate: (template, params) => {
+    const preset = PRESETS.find((p) => p.template === template);
+    set((s) => ({ template, params: { ...s.params, ...(params ?? preset?.params) } }));
+    get().regenerate();
+    set((s) => ({ fitToken: s.fitToken + 1 }));
+  },
+  galleryOpen: false,
+  setGalleryOpen: (galleryOpen) => set({ galleryOpen }),
   setBleed: (bleed) => set({ bleed }),
   toggleLayer: (k) => set((s) => ({ layers: { ...s.layers, [k]: !s.layers[k] } })),
   setFullImage: (fullImage) =>
@@ -308,10 +322,15 @@ export const useStore = create<State>((set, get) => ({
   setCropEdit: (cropEdit) => set({ cropEdit }),
   setGrid: (grid) => set({ grid }),
   setShowDims: (showDims) => set({ showDims }),
-  reset: () => {
-    set({ params: DEFAULT_PARAMS, bleed: 3, fullImage: undefined, faceImages: {}, faceColors: {}, bgColor: undefined, interior: EMPTY_SIDE, artSide: 'out', sel: EMPTY_SEL, template: 'lidBox' });
+  reset: (presetId) => {
+    const preset = PRESETS.find((p) => p.id === presetId) ?? PRESETS[0];
+    set({
+      params: { ...DEFAULT_PARAMS, ...preset.params }, bleed: 3, fullImage: undefined, faceImages: {}, faceColors: {}, bgColor: undefined,
+      interior: EMPTY_SIDE, artSide: 'out', sel: EMPTY_SEL, template: preset.template, galleryOpen: false, cropEdit: undefined,
+    });
     get().regenerate();
     get().commit({ objects: [] }, 'template');
+    set((s) => ({ fitToken: s.fitToken + 1 }));
   },
 }));
 

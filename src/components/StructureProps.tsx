@@ -42,20 +42,15 @@ export function StructureProps() {
       </Section>
 
       <Section title="Modelo paramétrico">
-        <CompactSelect value={s.template} onChange={() => {}} title="Modelo">
+        <CompactSelect value={s.template} onChange={(id) => s.setTemplate(id as TemplateId)} title="Modelo">
           {(Object.keys(TEMPLATES) as TemplateId[]).map((id) => (
             <option key={id} value={id}>{TEMPLATES[id].name}</option>
           ))}
         </CompactSelect>
-        <SimpleGrid columns={3} gap={1.5} mt={1.5}>
-          <NumField prefix="L" title="Largura (mm)" value={params.width} onChange={(v) => setParam('width', v)} />
-          <NumField prefix="P" title="Profundidade (mm)" value={params.depth} onChange={(v) => setParam('depth', v)} />
-          <NumField prefix="A" title="Altura (mm)" value={params.height} onChange={(v) => setParam('height', v)} />
-        </SimpleGrid>
         <SimpleGrid columns={2} gap={1.5} mt={1.5}>
-          <NumField prefix="Aba tampa" title="Aba de encaixe da tampa (mm)" value={params.tuck} onChange={(v) => setParam('tuck', v)} />
-          <NumField prefix="Abas cola" title="Abas de cola (mm)" value={params.glue} onChange={(v) => setParam('glue', v)} />
-          <NumField prefix="Espessura" title="Espessura do papel (mm)" value={params.thickness} step={0.1} onChange={(v) => setParam('thickness', v)} />
+          {TEMPLATES[s.template].fields.map((f) => (
+            <NumField key={f.key} prefix={f.prefix} suffix="mm" title={f.title} step={f.step ?? 1} value={params[f.key]} onChange={(v) => setParam(f.key, v)} />
+          ))}
         </SimpleGrid>
         {clamped.length > 0 && (
           <Text fontSize="10px" color="blue.700" bg="blue.50" p={2} borderRadius="6px" mt={2}>
