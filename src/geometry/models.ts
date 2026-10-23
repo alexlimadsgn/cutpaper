@@ -171,6 +171,81 @@ export function milkBox(p: BoxParams): TFace[] {
 }
 
 /**
+ * Fundo travado 1-2-3 (sem cola), para corpos frente · lateral · traseira · lateral (x = início de cada parede):
+ * frente com recorte no meio, laterais com meia aba em diagonal e traseira com língua que entra no recorte.
+ */
+function bottom123(W: number, D: number, H: number, x: number[]): TFace[] {
+  const P = Math.PI;
+  const fd = D * 0.7, rc = D * 0.053, half = D / 2;
+  const nx0 = W * 0.25, nx1 = W * 0.75, nd = fd * 0.286;
+  const front: Vec2[] = [
+    [0, H], [W, H], ...arc([W - rc, H + fd - rc], rc, 0, P / 2), [nx1, H + fd], [nx1, H + fd - nd], [nx0, H + fd - nd], [nx0, H + fd],
+    ...arc([rc, H + fd - rc], rc, P / 2, P),
+  ];
+  const sideR = (x0: number): Vec2[] => [[x0, H], [x0 + D, H], [x0 + D, H + fd], ...arc([x0 + half + rc, H + fd - rc], rc, P / 2, P), [x0 + half, H + half]];
+  const sideL = (x0: number): Vec2[] => [[x0, H], [x0 + D, H], [x0 + half, H + half], ...arc([x0 + half - rc, H + fd - rc], rc, 0, P / 2), [x0, H + fd]];
+  // língua: diagonais até no máximo 30% da largura de cada lado (caixa quadrada também tem língua)
+  const ti = Math.min(half, W * 0.3);
+  const tongue = (x0: number): Vec2[] => [
+    [x0, H], [x0 + W, H], [x0 + W - ti, H + ti], ...arc([x0 + W - ti - rc, H + fd - rc], rc, 0, P / 2),
+    ...arc([x0 + ti + rc, H + fd - rc], rc, P / 2, P), [x0 + ti, H + ti],
+  ];
+  return [
+    { id: 'fundo-frente', name: 'Fundo frente', poly: front, parent: 'frente', hinge: [[0, H], [W, H]], angle: 90, label: [W * 0.1, H + fd * 0.5] },
+    { id: 'fundo-dir', name: 'Fundo dir.', poly: sideR(x[1]), parent: 'lat-dir', hinge: [[x[1], H], [x[2], H]], angle: 90, label: [x[1] + D * 0.8, H + D * 0.2] },
+    { id: 'fundo-tras', name: 'Fundo traseira', poly: tongue(x[2]), parent: 'traseira', hinge: [[x[2], H], [x[3], H]], angle: 90 },
+    { id: 'fundo-esq', name: 'Fundo esq.', poly: sideL(x[3]), parent: 'lat-esq', hinge: [[x[3], H], [x[4], H]], angle: 90, label: [x[3] + D * 0.2, H + D * 0.2] },
+  ];
+}
+
+/**
+ * Caixa meia bala: corpo quadrado, "gargalo" com recortes em losango entre os painéis
+ * (por onde a caixa é apertada/torcida para fechar, como uma bala) e faixa de cima com borda ondulada.
+ * Frente · lateral · traseira · lateral em linha, aba de cola na última lateral, fundo travado 1-2-3.
+ */
+export function halfCandy(p: BoxParams): TFace[] {
+  const { width: W, depth: D, height: H } = p;
+  const G = Math.min(p.glue, D * 0.6);
+  const N = Math.max(8, p.tuck); // altura do gargalo
+  const T = Math.min(W, D) * 0.27; // faixa de cima (sem contar as ondas)
+  const x = [0, W, W + D, 2 * W + D, 2 * W + 2 * D];
+  const widths = [W, D, W, D];
+  const ids = ['frente', 'lat-dir', 'traseira', 'lat-esq'];
+  const names = ['Frente', 'Lateral dir.', 'Traseira', 'Lateral esq.'];
+  const faces: TFace[] = [
+    { id: 'frente', name: 'Frente', poly: rect(0, 0, W, H) },
+    { id: 'lat-dir', name: 'Lateral dir.', poly: rect(x[1], 0, D, H), parent: 'frente', hinge: [[x[1], 0], [x[1], H]], angle: 90 },
+    { id: 'traseira', name: 'Traseira', poly: rect(x[2], 0, W, H), parent: 'lat-dir', hinge: [[x[2], 0], [x[2], H]], angle: 90 },
+    { id: 'lat-esq', name: 'Lateral esq.', poly: rect(x[3], 0, D, H), parent: 'traseira', hinge: [[x[3], 0], [x[3], H]], angle: 90 },
+    { id: 'aba-cola', name: 'Aba de cola', poly: glueStrip(x[4], 0, H, G), parent: 'lat-esq', hinge: [[x[4], 0], [x[4], H]], angle: 90 },
+    ...bottom123(W, D, H, x),
+  ];
+  const P = Math.PI;
+  for (let i = 0; i < 4; i++) {
+    const x0 = x[i], w = widths[i], x1 = x0 + w;
+    // meio losango de cada lado: o gargalo afina até ~15% da largura no meio da altura
+    const a = Math.min(widths[(i + 3) % 4], w) * 0.425;
+    const aL = Math.min(a, w * 0.425), aR = Math.min(a, w * 0.425);
+    faces.push({
+      id: `gargalo-${i}`, name: `Gargalo ${names[i].toLowerCase()}`, parent: ids[i], hinge: [[x0, 0], [x1, 0]], angle: 0,
+      poly: [[x0, 0], [x1, 0], [x1 - aR, -N / 2], [x1, -N], [x0, -N], [x0 + aL, -N / 2]],
+    });
+    // faixa de cima com 3 ondas; as faixas vizinhas ficam ligadas pelo vinco vertical
+    const k = 3, r = w / (2 * k), yb = -N - T;
+    const top: Vec2[] = [[x0, -N], [x1, -N], [x1, yb]];
+    for (let j = k - 1; j >= 0; j--) top.push(...arcPts([x0 + (j + 0.5) * (w / k), yb], r, 0, -P).slice(j === k - 1 ? 1 : 1));
+    faces.push({
+      id: `faixa-${i}`, name: `Faixa ${names[i].toLowerCase()}`, parent: `gargalo-${i}`, hinge: [[x0, -N], [x1, -N]], angle: 0,
+      poly: top, label: [x0 + w / 2, -N - T / 2],
+      ...(i ? { links: [{ other: `faixa-${i - 1}`, a: [x0, -N], b: [x0, yb] }] } : {}),
+    });
+  }
+  return withOrder(faces, {
+    'aba-cola': 1, 'lat-dir': 2, traseira: 2, 'lat-esq': 2, 'fundo-dir': 3, 'fundo-esq': 3, 'fundo-tras': 4, 'fundo-frente': 5,
+  });
+}
+
+/**
  * Caixa maleta (caixa surpresa), nas proporções do molde de referência:
  * frente · lateral · traseira (com visor) · lateral em linha, aba de cola na frente.
  * Telhados na frente e na traseira com alças de "orelhas"; as laterais sobem em triângulos de ponta
@@ -227,20 +302,6 @@ export function gableBox(p: BoxParams): TFace[] {
     };
   };
 
-  // fundo 1-2-3
-  const fd = D * 0.7, rc = D * 0.053, half = D / 2;
-  const nx0 = W * 0.25, nx1 = W * 0.75, nd = fd * 0.286;
-  const front: Vec2[] = [
-    [0, H], [W, H], ...arc([W - rc, H + fd - rc], rc, 0, P / 2, 3), [nx1, H + fd], [nx1, H + fd - nd], [nx0, H + fd - nd], [nx0, H + fd],
-    ...arc([rc, H + fd - rc], rc, P / 2, P, 3),
-  ];
-  const sideR = (x0: number): Vec2[] => [[x0, H], [x0 + D, H], [x0 + D, H + fd], ...arc([x0 + half + rc, H + fd - rc], rc, P / 2, P, 3), [x0 + half, H + half]];
-  const sideL = (x0: number): Vec2[] => [[x0, H], [x0 + D, H], [x0 + half, H + half], ...arc([x0 + half - rc, H + fd - rc], rc, 0, P / 2, 3), [x0, H + fd]];
-  const tongue = (x0: number): Vec2[] => [
-    [x0, H], [x0 + W, H], [x0 + W - half, H + half], ...arc([x0 + W - half - rc, H + fd - rc], rc, 0, P / 2, 3),
-    ...arc([x0 + half + rc, H + fd - rc], rc, P / 2, P, 3), [x0 + half, H + half],
-  ];
-
   const vw = W * 0.8, vh = H * 0.667;
   const g = Math.min(G * 0.3, H / 4);
   const faces: TFace[] = [
@@ -256,10 +317,7 @@ export function gableBox(p: BoxParams): TFace[] {
     grip(x[2] + e, 'alca-t', 'telhado-t'),
     tri(x[1], 'topo-dir', 'Topo dir.', 'lat-dir'),
     tri(x[3], 'topo-esq', 'Topo esq.', 'lat-esq'),
-    { id: 'fundo-frente', name: 'Fundo frente', poly: front, parent: 'frente', hinge: [[0, H], [W, H]], angle: 90, label: [W * 0.1, H + fd * 0.5] },
-    { id: 'fundo-dir', name: 'Fundo dir.', poly: sideR(x[1]), parent: 'lat-dir', hinge: [[x[1], H], [x[2], H]], angle: 90, label: [x[1] + D * 0.8, H + D * 0.2] },
-    { id: 'fundo-tras', name: 'Fundo traseira', poly: tongue(x[2]), parent: 'traseira', hinge: [[x[2], H], [x[3], H]], angle: 90 },
-    { id: 'fundo-esq', name: 'Fundo esq.', poly: sideL(x[3]), parent: 'lat-esq', hinge: [[x[3], H], [x[4], H]], angle: 90, label: [x[3] + D * 0.2, H + D * 0.2] },
+    ...bottom123(W, D, H, x),
   ];
   return withOrder(faces, {
     'aba-cola': 1, 'lat-dir': 2, traseira: 2, 'lat-esq': 2, 'fundo-dir': 3, 'fundo-esq': 3, 'fundo-tras': 4, 'fundo-frente': 5,

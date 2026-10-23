@@ -834,7 +834,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
           <>
             <defs>
               <pattern id="ed-grid" width={gridStep} height={gridStep} patternUnits="userSpaceOnUse">
-                <circle cx={0} cy={0} r={1 * px} fill="#cbd5e1" />
+                <circle cx={0} cy={0} r={1 * px} fill="var(--chakra-colors-gray-300)" />
               </pattern>
             </defs>
             <rect x={vb[0]} y={vb[1]} width={vb[2]} height={vb[3]} fill="url(#ed-grid)" pointerEvents="none" />

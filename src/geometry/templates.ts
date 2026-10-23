@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { graphFromSegments, type Graph, type Seg } from './graph';
 import { nameFaces, polyArea } from './faces';
 import { foldMatrices } from './fold';
-import { coracaoBox, gableBox, milkBox, tallPyramid } from './models';
+import { coracaoBox, gableBox, halfCandy, milkBox, tallPyramid } from './models';
 import type { BoxParams, Face, Vec2 } from './types';
 
 /** Painel de um template: polígono + vinco com a face-pai. */
@@ -429,6 +429,7 @@ export const TEMPLATES = {
   milk: def('Caixa milk', milkBox, noLimits, [F.W, F.D, F.H, { ...F.tuck, prefix: 'Alça', title: 'Altura da alça (mm)' }, F.glue]),
   gable: def('Caixa maleta', gableBox, noLimits, [F.W, F.D, F.H, { ...F.tuck, prefix: 'Alça', title: 'Altura da alça (mm)' }, F.glue]),
   heart: def('Caixa coração', coracaoBox, noLimits, [F.W, F.D, F.H, F.glue]),
+  halfCandy: def('Caixa meia bala', halfCandy, noLimits, [F.W, F.D, F.H, { ...F.tuck, prefix: 'Gargalo', title: 'Altura do gargalo (mm)' }, F.glue]),
   tallPyramid: def('Pirâmide alta', tallPyramid, noLimits, [{ ...F.W, prefix: 'Base', title: 'Lado da base (mm)' }, F.H]),
 };
 export type TemplateId = keyof typeof TEMPLATES;
@@ -445,6 +446,7 @@ export const PRESETS: Preset[] = [
   { id: 'milk', name: 'Caixa milk', desc: 'Lembrancinha de festa com alça', template: 'milk', params: { width: 60, depth: 60, height: 90, tuck: 14, glue: 12 } },
   { id: 'gable', name: 'Caixa maleta', desc: 'Caixa surpresa com alça e visor', template: 'gable', params: { width: 88, depth: 44, height: 53, tuck: 22, glue: 13 } },
   { id: 'heart', name: 'Caixa coração', desc: 'Corações no topo e visor', template: 'heart', params: { width: 62, depth: 62, height: 62, glue: 12 } },
+  { id: 'halfCandy', name: 'Caixa meia bala', desc: 'Doces, fecha torcendo o gargalo', template: 'halfCandy', params: { width: 45, depth: 45, height: 45, tuck: 39, glue: 12 } },
   { id: 'tallPyramid', name: 'Pirâmide alta', desc: 'Obelisco para doces e bombons', template: 'tallPyramid', params: { width: 55, height: 110 } },
   { id: 'hex', name: 'Caixa sextavada', desc: 'Brinde, vela, doces finos', template: 'hexBox', params: { width: 30, height: 45, tuck: 12, glue: 12 } },
 ];

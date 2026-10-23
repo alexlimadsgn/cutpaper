@@ -80,8 +80,9 @@ export function bleedOutline(outline: Vec2[][], bleed: number): Vec2[][] {
     }
     return out;
   });
-  // união com o material: some o que o offset dobrou para dentro; NonZero tira os laços
-  const grown = Clipper.Union(toPaths(raw), undefined, FillRule.NonZero);
+  // só conta o que gira no sentido do contorno externo: as pontas de entalhes estreitos viram
+  // laços invertidos e somem (a sangria não aparece onde não cabe); depois, união com o material
+  const grown = Clipper.Union(toPaths(raw), undefined, sign > 0 ? FillRule.Positive : FillRule.Negative);
   return fromPaths(Clipper.Union(grown, toPaths(outline), FillRule.NonZero)).map(clean).filter((p) => p.length >= 3);
 }
 

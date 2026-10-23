@@ -38,6 +38,11 @@ const system = createSystem(defaultConfig, {
   globalCss: { 'html, body': { bg: 'bg' } },
   theme: {
     semanticTokens: {
+      radii: {
+        l1: { value: '{radii.lg}' },
+        l2: { value: '{radii.xl}' },
+        l3: { value: '{radii.xl}' },
+      },
       colors: {
         bg: {
           DEFAULT: sem('#ffffff', '#141416'), subtle: sem('#fafafa', '#1b1b1e'), muted: sem('#f4f4f5', '#26262a'),
@@ -57,6 +62,11 @@ const system = createSystem(defaultConfig, {
           focusRing: sem('#18181b', '#e4e4e7'),
         },
       },
+    },
+    // botões e campos mais arredondados (os componentes do Chakra usam os raios l1/l2/l3)
+    recipes: {
+      // contorno dos botões "outline" com a borda do tema (no escuro ficava claro demais)
+      button: { variants: { variant: { outline: { borderColor: 'border.emphasized' } } } },
     },
     tokens: {
       fonts: {
