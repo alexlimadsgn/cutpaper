@@ -57,6 +57,7 @@ const pathCache = new WeakMap<Face[], { free: string[]; solved: Map<string, numb
 export function foldMatricesLinked(faces: Face[], links: Dieline['links'], t: number) {
   if (!links.length || t >= 1 || t <= 0) return foldMatrices(faces, t);
   const steps = stepCount(faces);
+  const byId = new Map(faces.map((f) => [f.id, f]));
   let cache = pathCache.get(faces);
   if (!cache) {
     // só as duas peças de cada ligação se ajustam (fole e cantos); paredes e telhados seguem a própria
@@ -80,7 +81,7 @@ export function foldMatricesLinked(faces: Face[], links: Dieline['links'], t: nu
     for (const id of free) ang.set(id, solved[k - 1].get(id)! + (target.get(id)! - (solved[k - 1].get(`~${id}`) ?? 0)));
     // Gauss-Newton (com amortecimento): resíduo = distância entre as duas cópias de cada vinco
     // + um puxão fraco para o andamento normal da dobra (escolhe o ramo natural)
-    const W = 1e-2;
+    const W = 1e-2, W2 = 0.2; // W2: dobrar para o lado contrário ao da caixa montada custa caro (desempata dentro/fora)
     const residual = (): number[] => {
       const m = matsFor(ang);
       const r: number[] = [];
@@ -90,7 +91,7 @@ export function foldMatricesLinked(faces: Face[], links: Dieline['links'], t: nu
           w.set(p[0], p[1], 0).applyMatrix4(m.get(l.b)!);
           r.push(v.x - w.x, v.y - w.y, v.z - w.z);
         }
-      for (const id of free) r.push(W * (ang.get(id)! - target.get(id)!));
+      for (const id of free) r.push(W * (ang.get(id)! - target.get(id)!), W2 * Math.min(0, ang.get(id)! * Math.sign(byId.get(id)!.angle ?? 0)));
       return r;
     };
     const n = free.length;
