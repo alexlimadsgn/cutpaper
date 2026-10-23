@@ -251,7 +251,20 @@ export function deriveDieline(g0: Graph, names: Record<string, string> = {}, roo
   for (const f of faces.values())
     for (const e of new Set(f.loop.edges.map(baseEdgeId))) (edgeFaces[e] ??= []).push(f.id);
 
-  return { faces: list, cuts: chain(g, 'cut'), creases: chain(g, 'crease', new Set(dead)), dead, edgeFaces };
+  // vincos fora da árvore: o mais longo de cada par de faces
+  const linkBy = new Map<string, { a: string; b: string; p: Vec2; q: Vec2; len: number }>();
+  for (const [f0, list2] of adj)
+    for (const { to: f1, eid } of list2) {
+      if (f0 > f1 || faces.get(f0)!.parent === f1 || faces.get(f1)!.parent === f0) continue;
+      const e = g.e[eid];
+      const p: Vec2 = [g.v[e.a].x, g.v[e.a].y], q: Vec2 = [g.v[e.b].x, g.v[e.b].y];
+      const len = Math.hypot(q[0] - p[0], q[1] - p[1]);
+      const key = `${f0}|${f1}`;
+      if ((linkBy.get(key)?.len ?? 0) < len) linkBy.set(key, { a: f0, b: f1, p, q, len });
+    }
+  const links = [...linkBy.values()].map(({ a, b, p, q }) => ({ a, b, p, q }));
+
+  return { faces: list, cuts: chain(g, 'cut'), creases: chain(g, 'crease', new Set(dead)), dead, edgeFaces, links };
 }
 
 /**

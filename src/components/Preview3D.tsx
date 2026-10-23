@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { buildBackSvg, buildSvg } from '../export/svg';
 import { centroid } from '../geometry/faces';
-import { foldMatrices } from '../geometry/fold';
+import { foldMatricesLinked } from '../geometry/fold';
 import { hasInterior, useStore } from '../store';
 import { useDieline } from '../useDieline';
 
@@ -113,7 +113,7 @@ function Box3D() {
   );
   useEffect(() => () => geometries.forEach((g) => g.geo.dispose()), [geometries]);
 
-  const matrices = useMemo(() => foldMatrices(dieline.faces, fold), [dieline, fold]);
+  const matrices = useMemo(() => foldMatricesLinked(dieline.faces, dieline.links, fold), [dieline, fold]);
   // centraliza na face base (a maior sem pai)
   const root = dieline.faces.filter((f) => !f.parent).sort((a, b) => b.area - a.area)[0];
   const [cx, cy] = root ? centroid(root.poly) : [0, 0];

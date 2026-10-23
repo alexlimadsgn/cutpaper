@@ -30,6 +30,11 @@ export interface Dieline {
   dead: string[];
   /** Faces (painéis) de cada lado de cada aresta. */
   edgeFaces: Record<string, string[]>;
+  /**
+   * Vincos entre faces que não são mãe e filha na árvore (fole da caixa milk…):
+   * a caixa só fica inteira se essas faces andarem juntas durante a dobra.
+   */
+  links: { a: string; b: string; p: Vec2; q: Vec2 }[];
 }
 
 export interface BoxParams {

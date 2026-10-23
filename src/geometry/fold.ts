@@ -2,7 +2,7 @@ import { Clipper, FillRule } from 'clipper2-js';
 import * as THREE from 'three';
 import { polyArea } from './faces';
 import { toPaths, fromPaths } from './outline';
-import type { Face, Vec2 } from './types';
+import type { Dieline, Face, Vec2 } from './types';
 
 /** Número de etapas de montagem do molde. */
 export const stepCount = (faces: Face[]) => Math.max(0, ...faces.map((f) => f.step ?? 0));
@@ -42,6 +42,56 @@ export function foldMatrices(faces: Face[], t: number) {
     return m;
   };
   return new Map(faces.map((f) => [f.id, get(f)]));
+}
+
+/**
+ * Como foldMatrices, mas mantendo inteiras as faces ligadas por vincos fora da árvore (fole):
+ * em cada quadro da montagem, os ângulos das faces no caminho entre as duas pontas de cada
+ * ligação são ajustados para que o vinco comum continue no mesmo lugar nas duas faces.
+ */
+export function foldMatricesLinked(faces: Face[], links: Dieline['links'], t: number) {
+  if (!links.length || t >= 1 || t <= 0) return foldMatrices(faces, t);
+  const steps = stepCount(faces);
+  const byId = new Map(faces.map((f) => [f.id, f]));
+  const chainOf = (id: string) => { const out: string[] = []; for (let f = byId.get(id); f; f = f.parent ? byId.get(f.parent) : undefined) out.push(f.id); return out; };
+  // faces livres: do vínculo até o ancestral comum (exclusive)
+  const free = new Set<string>();
+  for (const l of links) {
+    const ca = chainOf(l.a), cb = chainOf(l.b);
+    const common = ca.find((x) => cb.includes(x));
+    for (const c of [ca, cb]) for (const id of c) { if (id === common) break; free.add(id); }
+  }
+  const target = new Map(faces.map((f) => [f.id, (f.angle ?? 90) * stepProgress(f, t, steps)]));
+  const ang = new Map(target);
+  const live = faces.map((f) => ({ ...f, step: undefined }));
+  const mats = () => { for (const f of live) f.angle = ang.get(f.id); return foldMatrices(live, 1); };
+  const v = new THREE.Vector3(), w = new THREE.Vector3();
+  const cost = () => {
+    const m = mats();
+    let c = 0;
+    for (const l of links)
+      for (const p of [l.p, l.q]) {
+        v.set(p[0], p[1], 0).applyMatrix4(m.get(l.a)!);
+        w.set(p[0], p[1], 0).applyMatrix4(m.get(l.b)!);
+        c += v.distanceToSquared(w);
+      }
+    // empate: fica perto do andamento normal da dobra
+    for (const id of free) c += 1e-4 * (ang.get(id)! - target.get(id)!) ** 2;
+    return c;
+  };
+  let best = cost();
+  for (let step = 8; step > 0.02; step /= 2)
+    for (let round = 0, improved = true; improved && round < 20; round++) {
+      improved = false;
+      for (const id of free)
+        for (const d of [step, -step]) {
+          const old = ang.get(id)!;
+          ang.set(id, old + d);
+          const c = cost();
+          if (c < best - 1e-9) { best = c; improved = true; } else ang.set(id, old);
+        }
+    }
+  return mats();
 }
 
 export interface Conflict {
