@@ -23,7 +23,7 @@ export interface TFace {
    * Vincos extras com outras faces (fora da árvore de dobras, ex.: fole da caixa milk).
    * O ângulo é calculado da caixa montada, para a dobra fechar igual pelos dois caminhos.
    */
-  links?: { other: string; a: Vec2; b: Vec2 }[];
+  links?: { other: string; a: Vec2; b: Vec2; step?: number }[];
   /** Peça de fole: na animação os vincos dela se ajustam (ver Edge.flex). */
   flex?: boolean;
 }
@@ -142,7 +142,7 @@ export function buildTemplate(faces: TFace[]): { graph: Graph; names: Record<str
     const mats = foldTFaces(faces);
     for (const f of faces)
       for (const l of f.links ?? [])
-        segs.push({ a: l.a, b: l.b, type: 'crease', angle: +linkAngle(mats, l.other, f, l.a, l.b).toFixed(2), step: f.step, flex: true });
+        segs.push({ a: l.a, b: l.b, type: 'crease', angle: +linkAngle(mats, l.other, f, l.a, l.b).toFixed(2), step: l.step ?? f.step, flex: true });
   }
   const graph = graphFromSegments(segs);
   const labels = faces.map((f) => ({

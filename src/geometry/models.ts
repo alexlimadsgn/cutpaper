@@ -208,6 +208,7 @@ export function halfCandy(p: BoxParams): TFace[] {
   const G = Math.min(p.glue, D * 0.6);
   const N = Math.max(8, p.tuck); // altura do gargalo
   const T = Math.min(W, D) * 0.27; // faixa de cima (sem contar as ondas)
+  const pinch = 35; // quanto a cintura entra (graus)
   const x = [0, W, W + D, 2 * W + D, 2 * W + 2 * D];
   const widths = [W, D, W, D];
   const ids = ['frente', 'lat-dir', 'traseira', 'lat-esq'];
@@ -226,24 +227,33 @@ export function halfCandy(p: BoxParams): TFace[] {
     // meio losango de cada lado: o gargalo afina até ~15% da largura no meio da altura
     const a = Math.min(widths[(i + 3) % 4], w) * 0.425;
     const aL = Math.min(a, w * 0.425), aR = Math.min(a, w * 0.425);
-    faces.push({
-      id: `gargalo-${i}`, name: `Gargalo ${names[i].toLowerCase()}`, parent: ids[i], hinge: [[x0, 0], [x1, 0]], angle: 0,
-      poly: [[x0, 0], [x1, 0], [x1 - aR, -N / 2], [x1, -N], [x0, -N], [x0 + aL, -N / 2]],
-    });
+    // vinco na cintura (meio do losango): a metade de baixo entra, a de cima volta — "aperta" o meio
+    const wl: Vec2 = [x0 + aL, -N / 2], wr: Vec2 = [x1 - aR, -N / 2];
+    faces.push(
+      {
+        id: `gargalo-${i}`, name: `Gargalo ${names[i].toLowerCase()}`, parent: ids[i], hinge: [[x0, 0], [x1, 0]], angle: pinch,
+        poly: [[x0, 0], [x1, 0], wr, wl],
+      },
+      {
+        id: `cintura-${i}`, name: `Cintura ${names[i].toLowerCase()}`, parent: `gargalo-${i}`, hinge: [wl, wr], angle: -2 * pinch,
+        poly: [wl, wr, [x1, -N], [x0, -N]],
+      },
+    );
     // faixa de cima com 3 ondas; as faixas vizinhas ficam ligadas pelo vinco vertical
     const k = 3, r = w / (2 * k), yb = -N - T;
     const top: Vec2[] = [[x0, -N], [x1, -N], [x1, yb]];
     for (let j = k - 1; j >= 0; j--) top.push(...arcPts([x0 + (j + 0.5) * (w / k), yb], r, 0, -P).slice(j === k - 1 ? 1 : 1));
     faces.push({
-      id: `faixa-${i}`, name: `Faixa ${names[i].toLowerCase()}`, parent: `gargalo-${i}`, hinge: [[x0, -N], [x1, -N]], angle: 0,
+      id: `faixa-${i}`, name: `Faixa ${names[i].toLowerCase()}`, parent: `cintura-${i}`, hinge: [[x0, -N], [x1, -N]], angle: pinch,
       poly: top, label: [x0 + w / 2, -N - T / 2],
-      ...(i ? { links: [{ other: `faixa-${i - 1}`, a: [x0, -N], b: [x0, yb] }] } : {}),
+      // o anel das faixas fecha junto com as paredes (etapa 2)
+      ...(i ? { links: [{ other: `faixa-${i - 1}`, a: [x0, -N], b: [x0, yb], step: 2 }] } : {}),
     });
   }
   return withOrder(faces, {
     'aba-cola': 1, 'lat-dir': 2, traseira: 2, 'lat-esq': 2, 'fundo-dir': 3, 'fundo-esq': 3, 'fundo-tras': 4, 'fundo-frente': 5,
-    // as faixas de cima formam um anel junto com as paredes: dobram na mesma etapa
-    'faixa-*': 2, 'gargalo-*': 2,
+    // por último, aperta a cintura: as quatro metades entram juntas e a faixa de cima fica em pé
+    'gargalo-*': 6, 'cintura-*': 6, 'faixa-*': 6,
   });
 }
 
