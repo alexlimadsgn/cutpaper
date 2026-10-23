@@ -20,7 +20,7 @@ export function loadSvgText(name: string, text: string) {
   try {
     const { segs, stats } = importSvg(text);
     if (!segs.length) throw new Error('Nenhuma linha encontrada no arquivo.');
-    let graph = graphFromSegments(segs, 0.05);
+    let graph = graphFromSegments(segs, 0.15);
     // leva o canto superior esquerdo para a origem
     const b = graphBounds(graph);
     graph = scaleGraph(graph, 1, 1, [0, 0]); // cópia

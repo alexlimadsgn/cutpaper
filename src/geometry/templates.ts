@@ -1,9 +1,12 @@
+import * as THREE from 'three';
 import { graphFromSegments, type Graph, type Seg } from './graph';
-import { nameFaces } from './faces';
-import type { BoxParams, Vec2 } from './types';
+import { nameFaces, polyArea } from './faces';
+import { foldMatrices } from './fold';
+import { coracaoBox, gableBox, milkBox, tallPyramid } from './models';
+import type { BoxParams, Face, Vec2 } from './types';
 
 /** Painel de um template: polígono + vinco com a face-pai. */
-interface TFace {
+export interface TFace {
   id: string;
   name: string;
   poly: Vec2[];
@@ -14,9 +17,16 @@ interface TFace {
   step?: number;
   /** Furos (ex.: passagem de fita), cortados dentro do painel. */
   holes?: Vec2[][];
+  /** Ponto dentro da face para o nome (quando o centro cai fora dela ou num furo). */
+  label?: Vec2;
+  /**
+   * Vincos extras com outras faces (fora da árvore de dobras, ex.: fole da caixa milk).
+   * O ângulo é calculado da caixa montada, para a dobra fechar igual pelos dois caminhos.
+   */
+  links?: { other: string; a: Vec2; b: Vec2 }[];
 }
 
-const rect = (x: number, y: number, w: number, h: number): Vec2[] => [
+export const rect = (x: number, y: number, w: number, h: number): Vec2[] => [
   [x, y],
   [x + w, y],
   [x + w, y + h],
@@ -122,10 +132,16 @@ export function buildTemplate(faces: TFace[]): { graph: Graph; names: Record<str
   const ring = (poly: Vec2[]) => poly.forEach((a, i) => segs.push({ a, b: poly[(i + 1) % poly.length], type: 'cut' }));
   for (const f of faces) { ring(f.poly); f.holes?.forEach(ring); }
   for (const f of faces) if (f.hinge) segs.push({ a: f.hinge[0], b: f.hinge[1], type: 'crease', angle: f.angle, step: f.step });
+  if (faces.some((f) => f.links?.length)) {
+    const mats = foldTFaces(faces);
+    for (const f of faces)
+      for (const l of f.links ?? [])
+        segs.push({ a: l.a, b: l.b, type: 'crease', angle: +linkAngle(mats, l.other, f, l.a, l.b).toFixed(2), step: f.step });
+  }
   const graph = graphFromSegments(segs);
   const labels = faces.map((f) => ({
     name: f.name,
-    at: [f.poly.reduce((s, q) => s + q[0], 0) / f.poly.length, f.poly.reduce((s, q) => s + q[1], 0) / f.poly.length] as Vec2,
+    at: f.label ?? [f.poly.reduce((s, q) => s + q[0], 0) / f.poly.length, f.poly.reduce((s, q) => s + q[1], 0) / f.poly.length] as Vec2,
   }));
   const names = nameFaces(graph, labels);
   // a primeira face do template (sem pai) é a base da dobra
@@ -133,12 +149,81 @@ export function buildTemplate(faces: TFace[]): { graph: Graph; names: Record<str
   return { graph, names, root };
 }
 
+// ---------- caixa montada a partir dos painéis ----------
+
+const asFace = (f: TFace): Face => ({
+  id: f.id, name: f.name, poly: f.poly, holes: [], area: polyArea(f.poly), parent: f.parent, hinge: f.hinge, angle: f.angle,
+});
+/** Matrizes da caixa montada (100%) direto dos painéis do template. */
+export const foldTFaces = (faces: TFace[]) => foldMatrices(faces.map(asFace), 1);
+
+/** Gira o ponto p da face (plano) em torno da dobra a→b pelo ângulo, no mesmo sentido de foldMatrices. */
+function hingeRotation(f: TFace, a: Vec2, b: Vec2, angle: number) {
+  const axis = new THREE.Vector3(b[0] - a[0], b[1] - a[1], 0).normalize();
+  const cx = f.poly.reduce((s, p) => s + p[0], 0) / f.poly.length - a[0];
+  const cy = f.poly.reduce((s, p) => s + p[1], 0) / f.poly.length - a[1];
+  if (axis.x * cy - axis.y * cx < 0) axis.negate();
+  return { axis, m: new THREE.Matrix4().makeTranslation(a[0], a[1], 0)
+    .multiply(new THREE.Matrix4().makeRotationAxis(axis, THREE.MathUtils.degToRad(angle)))
+    .multiply(new THREE.Matrix4().makeTranslation(-a[0], -a[1], 0)) };
+}
+
+/** Ângulo da dobra a→b entre a face `other` e a face `f`, lido da caixa montada. */
+function linkAngle(mats: Map<string, THREE.Matrix4>, other: string, f: TFace, a: Vec2, b: Vec2) {
+  const inv = mats.get(other)!.clone().invert();
+  const { axis } = hingeRotation(f, a, b, 0);
+  // vértice de f mais longe da dobra
+  const dist = (p: Vec2) => Math.abs((b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]));
+  const p = f.poly.reduce((m, q) => (dist(q) > dist(m) ? q : m), f.poly[0]);
+  const q = new THREE.Vector3(p[0], p[1], 0).applyMatrix4(mats.get(f.id)!).applyMatrix4(inv);
+  const A = new THREE.Vector3(a[0], a[1], 0);
+  const r = new THREE.Vector3(p[0], p[1], 0).sub(A), s = q.sub(A);
+  r.addScaledVector(axis, -r.dot(axis));
+  s.addScaledVector(axis, -s.dot(axis));
+  return THREE.MathUtils.radToDeg(Math.atan2(axis.dot(r.clone().cross(s)), r.dot(s)));
+}
+
+/**
+ * Confere a caixa montada: cada vinco extra precisa fechar igual pelos dois caminhos da árvore.
+ * Devolve a maior diferença (mm) entre as duas posições de um vértice.
+ */
+export function linkResidual(faces: TFace[]) {
+  const mats = foldTFaces(faces);
+  let worst = 0;
+  for (const f of faces)
+    for (const l of f.links ?? []) {
+      const ang = linkAngle(mats, l.other, f, l.a, l.b);
+      const via = mats.get(l.other)!.clone().multiply(hingeRotation(f, l.a, l.b, ang).m);
+      for (const p of f.poly) {
+        const v = new THREE.Vector3(p[0], p[1], 0);
+        worst = Math.max(worst, v.clone().applyMatrix4(via).distanceTo(v.applyMatrix4(mats.get(f.id)!)));
+      }
+    }
+  return worst;
+}
+
+/** Ângulo da dobra de `id` que leva o vértice p dessa face até o vértice q da face `target`. */
+export function solveAngle(faces: TFace[], id: string, p: Vec2, target: string, q: Vec2): number {
+  const f = faces.find((x) => x.id === id)!;
+  const err = (ang: number) => {
+    f.angle = ang;
+    const m = foldTFaces(faces);
+    return new THREE.Vector3(p[0], p[1], 0).applyMatrix4(m.get(id)!).distanceTo(new THREE.Vector3(q[0], q[1], 0).applyMatrix4(m.get(target)!));
+  };
+  let best = 0, be = Infinity;
+  for (let a = -180; a <= 180; a += 1) { const e = err(a); if (e < be) { be = e; best = a; } }
+  for (let step = 0.5; step > 0.001; step /= 2)
+    for (const a of [best - step, best + step]) { const e = err(a); if (e < be) { be = e; best = a; } }
+  f.angle = +best.toFixed(3);
+  return f.angle;
+}
+
 // ---------- outros modelos ----------
 
-const deg = (r: number) => (r * 180) / Math.PI;
+export const deg = (r: number) => (r * 180) / Math.PI;
 
 /** Aba trapezoidal sobre a aresta a→b, para fora do painel (lado esquerdo de a→b, com Y para baixo). */
-function tab(a: Vec2, b: Vec2, depth: number, inset: number): Vec2[] {
+export function tab(a: Vec2, b: Vec2, depth: number, inset: number): Vec2[] {
   const dx = b[0] - a[0], dy = b[1] - a[1];
   const len = Math.hypot(dx, dy) || 1;
   const ux = dx / len, uy = dy / len;
@@ -148,16 +233,16 @@ function tab(a: Vec2, b: Vec2, depth: number, inset: number): Vec2[] {
 }
 
 /** Aba de cola vertical à direita de x, de y0 a y1. */
-const glueStrip = (x: number, y0: number, y1: number, G: number): Vec2[] => {
+export const glueStrip = (x: number, y0: number, y1: number, G: number): Vec2[] => {
   const c = Math.min(G * 0.45, (y1 - y0) / 4);
   return [[x, y0], [x + G, y0 + c], [x + G, y1 - c], [x, y1]];
 };
 
-const circle = (cx: number, cy: number, r: number, n = 20): Vec2[] =>
+export const circle = (cx: number, cy: number, r: number, n = 20): Vec2[] =>
   Array.from({ length: n }, (_, i) => [cx + r * Math.cos((i / n) * 2 * Math.PI), cy + r * Math.sin((i / n) * 2 * Math.PI)] as Vec2);
 
 /** Ordem de montagem por id de face: dobra o corpo, fecha o fundo e só então a tampa. */
-const withOrder = (faces: TFace[], order: Record<string, number>) =>
+export const withOrder = (faces: TFace[], order: Record<string, number>) =>
   faces.map((f) => (f.parent ? { ...f, step: order[f.id] ?? order[f.id.replace(/-\d+$/, '-*')] } : f));
 
 /** Bandeja / cachepô: caixa aberta, paredes com abas de cola. */
@@ -309,6 +394,10 @@ export const TEMPLATES = {
   pyramid: def('Caixa pirâmide', pyramid, noLimits, [{ ...F.W, prefix: 'Base', title: 'Lado da base (mm)' }, F.H]),
   prism: def('Caixa prisma', prism, noLimits, [{ ...F.W, prefix: 'Lado', title: 'Lado do triângulo (mm)' }, { ...F.H, prefix: 'C', title: 'Comprimento (mm)' }, F.tuck, F.glue]),
   hexBox: def('Caixa sextavada', hexBox, noLimits, [{ ...F.W, prefix: 'Lado', title: 'Lado do hexágono (mm)' }, F.H, F.tuck, F.glue]),
+  milk: def('Caixa milk', milkBox, noLimits, [F.W, F.D, F.H, { ...F.tuck, prefix: 'Alça', title: 'Altura da alça (mm)' }, F.glue]),
+  gable: def('Caixa maleta', gableBox, noLimits, [F.W, F.D, F.H, { ...F.tuck, prefix: 'Alça', title: 'Altura da alça (mm)' }, F.glue]),
+  heart: def('Caixa coração', coracaoBox, noLimits, [F.W, F.D, F.H, F.glue]),
+  tallPyramid: def('Pirâmide alta', tallPyramid, noLimits, [{ ...F.W, prefix: 'Base', title: 'Lado da base (mm)' }, F.H]),
 };
 export type TemplateId = keyof typeof TEMPLATES;
 
@@ -321,5 +410,9 @@ export const PRESETS: Preset[] = [
   { id: 'tray', name: 'Cachepô', desc: 'Centro de mesa, porta-doces', template: 'openBox', params: { width: 60, depth: 60, height: 60, glue: 18 } },
   { id: 'pyramid', name: 'Caixa pirâmide', desc: 'Festa, fechada com fita', template: 'pyramid', params: { width: 50, height: 60 } },
   { id: 'prism', name: 'Caixa prisma', desc: 'Chocolate, tubete triangular', template: 'prism', params: { width: 45, height: 120, tuck: 12, glue: 12 } },
+  { id: 'milk', name: 'Caixa milk', desc: 'Lembrancinha de festa com alça', template: 'milk', params: { width: 60, depth: 60, height: 90, tuck: 14, glue: 12 } },
+  { id: 'gable', name: 'Caixa maleta', desc: 'Caixa surpresa com alça e visor', template: 'gable', params: { width: 85, depth: 45, height: 55, tuck: 25, glue: 12 } },
+  { id: 'heart', name: 'Caixa coração', desc: 'Corações no topo e visor', template: 'heart', params: { width: 62, depth: 62, height: 62, glue: 12 } },
+  { id: 'tallPyramid', name: 'Pirâmide alta', desc: 'Obelisco para doces e bombons', template: 'tallPyramid', params: { width: 55, height: 110 } },
   { id: 'hex', name: 'Caixa sextavada', desc: 'Brinde, vela, doces finos', template: 'hexBox', params: { width: 30, height: 45, tuck: 12, glue: 12 } },
 ];

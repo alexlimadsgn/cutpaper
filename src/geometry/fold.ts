@@ -104,13 +104,16 @@ export function findConflicts(faces: Face[]): Conflict[] {
 
     // abas irmãs ocupando o mesmo lugar
     for (const { B, inter } of neighbors)
-      if (B.depth === A.depth && A.f.parent && B.f.parent && A.leaf && B.leaf) out.push({ face: A.f.id, other: B.f.id, kind: 'overlap', area: inter });
+      // (abas que dobram em etapas diferentes se empilham; costas com costas, como alças, se encostam)
+      if (B.depth === A.depth && A.f.parent && B.f.parent && A.leaf && B.leaf && A.normal.dot(B.normal) > 0 && (A.f.step ?? 0) === (B.f.step ?? 0)) out.push({ face: A.f.id, other: B.f.id, kind: 'overlap', area: inter });
 
     // cobertura pelos painéis mais próximos da base em que a aba encosta
     if (!A.leaf) continue;
     const bigger = neighbors.filter((n) => n.B.depth < A.depth || !n.B.leaf);
     if (!bigger.length) continue;
-    const support = Clipper.Union(bigger.flatMap((n) => toPaths([proj(n.B.pts)])), undefined, FillRule.NonZero);
+    // a aba precisa ficar dentro da área formada pelos painéis em que encosta (fundo travado,
+    // tampas que se encontram no meio…): contorno convexo de todos os vizinhos no mesmo plano
+    const support = toPaths([hull(neighbors.flatMap((n) => proj(n.B.pts)))]);
     const covered = areaOf(fromPaths(Clipper.Intersect(pa, support, FillRule.NonZero)));
     const excess = A.area - covered;
     // tolera uma faixa da espessura do papel ao longo da maior borda
@@ -124,4 +127,15 @@ export function findConflicts(faces: Face[]): Conflict[] {
     }
   }
   return out;
+}
+
+/** Contorno convexo (cadeia monótona). */
+function hull(pts: Vec2[]): Vec2[] {
+  const p = [...pts].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  if (p.length < 3) return p;
+  const cross = (o: Vec2, a: Vec2, b: Vec2) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lo: Vec2[] = [], up: Vec2[] = [];
+  for (const q of p) { while (lo.length >= 2 && cross(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); }
+  for (const q of p.reverse()) { while (up.length >= 2 && cross(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop(); up.push(q); }
+  return [...lo.slice(0, -1), ...up.slice(0, -1)];
 }

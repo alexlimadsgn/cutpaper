@@ -2,7 +2,8 @@
 // Uso: npx tsx scripts/check-templates.ts
 import { deriveDieline, flapIds } from '../src/geometry/faces';
 import { findConflicts } from '../src/geometry/fold';
-import { PRESETS, TEMPLATES } from '../src/geometry/templates';
+import { PRESETS, TEMPLATES, linkResidual } from '../src/geometry/templates';
+import { coracaoBox, gableBox, milkBox, tallPyramid } from '../src/geometry/models';
 import type { BoxParams } from '../src/geometry/types';
 
 const BASE: BoxParams = { width: 100, depth: 80, height: 40, tuck: 15, glue: 20, thickness: 0.5 };
@@ -39,4 +40,10 @@ for (const p of PRESETS) {
   const vb = viewBoxOf(bleedOutline(materialOutline(deriveDieline(graph, names, root)), 3), 0);
   const a4 = layoutSheet(vb[2], vb[3], { sheetW: 210, sheetH: 297, margin: 5, gap: 2, quantity: 0, rotate: true });
   console.log(`${p.name.padEnd(18)} ${vb[2].toFixed(0)}×${vb[3].toFixed(0)} mm · A4: ${a4.perPage.length}`);
+}
+
+// vincos extras (fole) fecham igual pelos dois caminhos?
+for (const [n, fn] of [['milk', milkBox], ['maleta', gableBox], ['coracao', coracaoBox], ['piramide-alta', tallPyramid]] as const) {
+  const p = PRESETS.find((x) => x.template === ({ milk: 'milk', maleta: 'gable', coracao: 'heart', 'piramide-alta': 'tallPyramid' } as const)[n])!;
+  console.log(n, 'resíduo dos vincos extras (mm):', linkResidual(fn({ ...BASE, ...p.params })).toFixed(4));
 }

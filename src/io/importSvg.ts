@@ -1,5 +1,6 @@
 import type { EdgeType, Seg } from '../geometry/graph';
 import type { Vec2 } from '../geometry/types';
+import { asAxisRect, isDrawnDashes, isPageFrame, mergeDashes, snapCreaseEnds } from './cleanup';
 
 export interface ImportResult {
   segs: Seg[];
@@ -26,6 +27,12 @@ function labelsOf(el: Element, root: Element): string {
     parts.push(n.id, n.getAttribute('class') ?? '', n.getAttribute('inkscape:label') ?? '', n.getAttribute('data-name') ?? '');
   return parts.join(' ');
 }
+
+/** A camada/grupo diz explicitamente se é corte ou vinco? */
+const explicitType = (el: Element, root: Element) => {
+  const labels = labelsOf(el, root);
+  return CREASE_RE.test(labels) || CUT_RE.test(labels);
+};
 
 function classify(el: Element, cs: CSSStyleDeclaration, root: Element): EdgeType | 'skip' {
   const labels = labelsOf(el, root);
@@ -243,11 +250,16 @@ export function importSvg(text: string): ImportResult {
   try {
     // escala: unidade do usuário → mm
     const isIllustrator = /Illustrator/i.test(text);
+    // página A4/A3 em pontos (842 × 595, 1191 × 842…), comum em exportações do Figma/Corel/Canva
+    const pw = parseFloat(root.getAttribute('width') ?? ''), ph = parseFloat(root.getAttribute('height') ?? '');
+    const near = (a: number, b: number) => Math.abs(a - b) <= 2;
+    const pagePt = [[842, 595], [842, 596], [1191, 842], [612, 792]].some(([a, b]) => (near(pw, a) && near(ph, b)) || (near(pw, b) && near(ph, a)));
     const vb = root.getAttribute('viewBox')?.trim().split(/[\s,]+/).map(parseFloat);
     const w = parseLength(root.getAttribute('width'));
-    let mmPerUnit = isIllustrator ? 25.4 / 72 : 25.4 / 96;
+    let mmPerUnit = isIllustrator || pagePt ? 25.4 / 72 : 25.4 / 96;
     if (w && w.unit !== '%') {
       const unitMm = w.unit === 'px' || w.unit === '' ? mmPerUnit : UNIT_MM[w.unit] ?? mmPerUnit;
+      // (sem unidade = px, a não ser que seja uma página em pontos)
       mmPerUnit = vb && vb[2] > 0 ? (w.n * unitMm) / vb[2] : unitMm;
     }
     const ox = vb?.[0] ?? 0, oy = vb?.[1] ?? 0;
@@ -265,20 +277,42 @@ export function importSvg(text: string): ImportResult {
       anyStroked ||= stroked;
       candidates.push({ el, type: classify(el, cs, root), stroked });
     }
+    // geometria de cada elemento já em mm
+    const items: { type: EdgeType; lines: Vec2[][]; explicit: boolean }[] = [];
     for (const { el, type, stroked } of candidates) {
       // só contornos: preenchimentos sem traço costumam ser arte
       if (type === 'skip' || (anyStroked && !stroked)) { stats.skipped++; continue; }
       const m = ctm(el, root);
-      for (const line of elementPolylines(el)) {
-        const pts = line.map(([x, y]) => {
-          const p = m.transformPoint(new DOMPoint(x, y));
-          return [(p.x - ox) * mmPerUnit, (p.y - oy) * mmPerUnit] as Vec2;
-        });
-        for (let k = 0; k + 1 < pts.length; k++) segs.push({ a: pts[k], b: pts[k + 1], type });
-      }
-      stats[type]++;
+      const lines = elementPolylines(el).map((line) => line.map(([x, y]) => {
+        const p = m.transformPoint(new DOMPoint(x, y));
+        return [(p.x - ox) * mmPerUnit, (p.y - oy) * mmPerUnit] as Vec2;
+      }));
+      items.push({ type, lines, explicit: explicitType(el, root) });
     }
-    return { segs, stats, mmPerUnit };
+
+    // moldura da página: retângulo que envolve todo o resto sem encostar nele
+    const others = (skip: number) => items.flatMap((it, i) => (i === skip ? [] : it.lines.flat()));
+    for (let i = items.length - 1; i >= 0; i--) {
+      const r = asAxisRect(items[i].lines);
+      if (!r || items[i].explicit) continue;
+      const pts = others(i);
+      if (isPageFrame(r, pts)) {
+        items.splice(i, 1);
+        stats.skipped++;
+      }
+    }
+
+    for (const it of items) {
+      // vinco desenhado como tracinhos soltos: vira linha contínua
+      if (isDrawnDashes(it.lines) && (it.type === 'crease' || !it.explicit)) {
+        for (const [a, b] of mergeDashes(it.lines)) segs.push({ a, b, type: 'crease' });
+        stats.crease++;
+        continue;
+      }
+      for (const pts of it.lines) for (let k = 0; k + 1 < pts.length; k++) segs.push({ a: pts[k], b: pts[k + 1], type: it.type });
+      stats[it.type]++;
+    }
+    return { segs: snapCreaseEnds(segs), stats, mmPerUnit };
   } finally {
     host.remove();
   }

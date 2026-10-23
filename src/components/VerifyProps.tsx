@@ -100,8 +100,8 @@ export function VerifyProps() {
       <Section
         title="Montagem passo a passo"
         action={manual && (
-          <Button size="2xs" variant="ghost" onClick={() => s.commit({ graph: clearSteps(s.doc.graph) })} title="Volta para a ordem sugerida automaticamente">
-            <RotateCcw size={12} /> Ordem automática
+          <Button size="2xs" variant="ghost" onClick={() => s.commit({ graph: clearSteps(s.doc.graph) })} title="Ordem automática: volta para a ordem sugerida pelo app" aria-label="Ordem automática">
+            <RotateCcw size={12} />
           </Button>
         )}
       >
