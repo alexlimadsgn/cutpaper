@@ -18,3 +18,7 @@ npm run dev
 - `src/geometry/` — modelo do molde (faces + dobras), templates paramétricos, contorno de corte e sangria
 - `src/export/svg.ts` — SVG 1:1 em mm com camadas `ARTE`, `SANGRIA`, `CORTE`, `VINCO`
 - `src/components/Preview3D.tsx` — dobra 3D a partir da árvore de faces
+
+## Licença
+
+[MIT](LICENSE) © 2026 Alex Lima ([@alexlimadsgn](https://instagram.com/alexlimadsgn)). Pode usar, copiar, modificar e distribuir, inclusive comercialmente, desde que mantenha o aviso de copyright e a licença.
