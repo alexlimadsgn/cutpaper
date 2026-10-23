@@ -111,7 +111,6 @@ function lockBottom({ W, D, H, x }: Body): TFace[] {
   ];
 }
 
-const BOTTOM_ORDER = { 'aba-cola': 1, 'lat-esq': 2, 'lat-dir': 2, traseira: 2, 'fundo-esq': 3, 'fundo-dir': 3, 'fundo-frente': 4, 'fundo-tras': 5 };
 
 /** Alça arredondada com dois furos para fita, presa no alto de um telhado. */
 function handle(id: string, x0: number, w: number, y: number, T: number, parent: string, angle: number): TFace {
@@ -138,7 +137,7 @@ export function milkBox(p: BoxParams): TFace[] {
   const m1 = D / 2, m3 = x[2] + D / 2;
   const g = Math.min(G * 0.5, R / 4);
   faces.push(
-    ...lockBottom(b),
+    ...bottom123(W, D, b.H, x, { frente: x[1], latDir: x[2], traseira: x[3], latEsq: x[0] }),
     { id: 'telhado-f', name: 'Telhado frente', poly: rect(x[1], -R, W, R), parent: 'frente', hinge: [[x[1], 0], [x[2], 0]], angle: alpha },
     { id: 'telhado-t', name: 'Telhado traseira', poly: rect(x[3], -R, W, R), parent: 'traseira', hinge: [[x[3], 0], [x[4], 0]], angle: alpha },
     handle('alca-f', x[1], W, -R, T, 'telhado-f', -alpha),
@@ -165,8 +164,10 @@ export function milkBox(p: BoxParams): TFace[] {
   // o canto da esquerda (preso só ao fole) vai até o telhado da traseira, onde é colado
   solveAngle(faces, 'canto-esq-e', [0, -R], 'telhado-t', [x[4], -R]);
   return withOrder(faces, {
-    ...BOTTOM_ORDER, 'fole-esq': 6, 'fole-dir': 6, 'canto-esq-e': 6, 'canto-esq-d': 6, 'canto-dir-e': 6, 'canto-dir-d': 6, 'cola-alta': 1,
-    'telhado-f': 6, 'telhado-t': 6, 'alca-f': 6, 'alca-t': 6,
+    // fundo 1-2-3: as abas laterais se empilham (dir. e depois esq.), a língua e por fim a frente com recorte
+    'aba-cola': 1, 'lat-esq': 2, 'lat-dir': 2, traseira: 2, 'fundo-dir': 3, 'fundo-esq': 4, 'fundo-tras': 5, 'fundo-frente': 6,
+    'fole-esq': 7, 'fole-dir': 7, 'canto-esq-e': 7, 'canto-esq-d': 7, 'canto-dir-e': 7, 'canto-dir-d': 7, 'cola-alta': 1,
+    'telhado-f': 7, 'telhado-t': 7, 'alca-f': 7, 'alca-t': 7,
   });
 }
 
@@ -174,13 +175,14 @@ export function milkBox(p: BoxParams): TFace[] {
  * Fundo travado 1-2-3 (sem cola), para corpos frente · lateral · traseira · lateral (x = início de cada parede):
  * frente com recorte no meio, laterais com meia aba em diagonal e traseira com língua que entra no recorte.
  */
-function bottom123(W: number, D: number, H: number, x: number[]): TFace[] {
+function bottom123(W: number, D: number, H: number, x: number[], at = { frente: x[0], latDir: x[1], traseira: x[2], latEsq: x[3] }): TFace[] {
   const P = Math.PI;
   const fd = D * 0.7, rc = D * 0.053, half = D / 2;
-  const nx0 = W * 0.25, nx1 = W * 0.75, nd = fd * 0.286;
+  const f0 = at.frente;
+  const nx0 = f0 + W * 0.25, nx1 = f0 + W * 0.75, nd = fd * 0.286;
   const front: Vec2[] = [
-    [0, H], [W, H], ...arc([W - rc, H + fd - rc], rc, 0, P / 2), [nx1, H + fd], [nx1, H + fd - nd], [nx0, H + fd - nd], [nx0, H + fd],
-    ...arc([rc, H + fd - rc], rc, P / 2, P),
+    [f0, H], [f0 + W, H], ...arc([f0 + W - rc, H + fd - rc], rc, 0, P / 2), [nx1, H + fd], [nx1, H + fd - nd], [nx0, H + fd - nd], [nx0, H + fd],
+    ...arc([f0 + rc, H + fd - rc], rc, P / 2, P),
   ];
   const sideR = (x0: number): Vec2[] => [[x0, H], [x0 + D, H], [x0 + D, H + fd], ...arc([x0 + half + rc, H + fd - rc], rc, P / 2, P), [x0 + half, H + half]];
   const sideL = (x0: number): Vec2[] => [[x0, H], [x0 + D, H], [x0 + half, H + half], ...arc([x0 + half - rc, H + fd - rc], rc, 0, P / 2), [x0, H + fd]];
@@ -191,10 +193,10 @@ function bottom123(W: number, D: number, H: number, x: number[]): TFace[] {
     ...arc([x0 + ti + rc, H + fd - rc], rc, P / 2, P), [x0 + ti, H + ti],
   ];
   return [
-    { id: 'fundo-frente', name: 'Fundo frente', poly: front, parent: 'frente', hinge: [[0, H], [W, H]], angle: 90, label: [W * 0.1, H + fd * 0.5] },
-    { id: 'fundo-dir', name: 'Fundo dir.', poly: sideR(x[1]), parent: 'lat-dir', hinge: [[x[1], H], [x[2], H]], angle: 90, label: [x[1] + D * 0.8, H + D * 0.2] },
-    { id: 'fundo-tras', name: 'Fundo traseira', poly: tongue(x[2]), parent: 'traseira', hinge: [[x[2], H], [x[3], H]], angle: 90 },
-    { id: 'fundo-esq', name: 'Fundo esq.', poly: sideL(x[3]), parent: 'lat-esq', hinge: [[x[3], H], [x[4], H]], angle: 90, label: [x[3] + D * 0.2, H + D * 0.2] },
+    { id: 'fundo-frente', name: 'Fundo frente', poly: front, parent: 'frente', hinge: [[f0, H], [f0 + W, H]], angle: 90, label: [f0 + W * 0.1, H + fd * 0.5] },
+    { id: 'fundo-dir', name: 'Fundo dir.', poly: sideR(at.latDir), parent: 'lat-dir', hinge: [[at.latDir, H], [at.latDir + D, H]], angle: 90, label: [at.latDir + D * 0.8, H + D * 0.2] },
+    { id: 'fundo-tras', name: 'Fundo traseira', poly: tongue(at.traseira), parent: 'traseira', hinge: [[at.traseira, H], [at.traseira + W, H]], angle: 90 },
+    { id: 'fundo-esq', name: 'Fundo esq.', poly: sideL(at.latEsq), parent: 'lat-esq', hinge: [[at.latEsq, H], [at.latEsq + D, H]], angle: 90, label: [at.latEsq + D * 0.2, H + D * 0.2] },
   ];
 }
 
