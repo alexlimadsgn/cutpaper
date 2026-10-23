@@ -7,13 +7,16 @@ import { useStore } from './store';
 
 /** Molde derivado do documento atual (faces, dobras, sangria, viewBox). */
 export function useDieline() {
-  const doc = useStore((s) => s.doc);
+  // só o molde importa (mover arte não recalcula faces, sangria e montagem)
+  const graph = useStore((s) => s.doc.graph);
+  const names = useStore((s) => s.doc.names);
+  const root = useStore((s) => s.doc.root);
   const bleed = useStore((s) => s.bleed);
   return useMemo(() => {
-    const dieline = deriveDieline(doc.graph, doc.names, doc.root);
+    const dieline = deriveDieline(graph, names, root);
     const material = materialOutline(dieline);
     const bleedPolys = bleedOutline(material, bleed);
     const conflicts = findConflicts(dieline.faces);
     return { dieline, material, bleedPolys, conflicts, viewBox: viewBoxOf(bleedPolys.length ? bleedPolys : material) };
-  }, [doc, bleed]);
+  }, [graph, names, root, bleed]);
 }
