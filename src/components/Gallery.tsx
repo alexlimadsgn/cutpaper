@@ -19,7 +19,8 @@ function Thumb({ preset }: { preset: Preset }) {
     return deriveDieline(t.graph, t.names, t.root);
   }, [preset]); // eslint-disable-line react-hooks/exhaustive-deps
   const vb = viewBoxOf(d.cuts, 4);
-  const sw = Math.max(vb[2], vb[3]) / 160;
+  // traço de ~1 px na miniatura, qualquer que seja o tamanho do molde
+  const sw = 1.1 / Math.min(220 / vb[2], 104 / vb[3]);
   return (
     <svg viewBox={vb.join(' ')} width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
       <g fill="none" strokeLinejoin="round">

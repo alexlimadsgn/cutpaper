@@ -154,47 +154,100 @@ export function milkBox(p: BoxParams): TFace[] {
 }
 
 /**
- * Caixa maleta (caixa surpresa): telhado de quatro águas — telhados na frente e na traseira,
- * triângulos nas laterais — com alças vazadas que se encontram no alto e visor na traseira.
+ * Caixa maleta (caixa surpresa), nas proporções do molde de referência:
+ * frente · lateral · traseira (com visor) · lateral em linha, aba de cola na frente.
+ * Telhados na frente e na traseira com alças de "orelhas"; as laterais sobem em triângulos de ponta
+ * redonda com uma fenda que abraça as duas alças juntas. Fundo travado 1-2-3.
  */
 export function gableBox(p: BoxParams): TFace[] {
-  const { faces, b } = body(p, 'left');
-  const { W, D, H, x } = b;
-  const R = Math.max(D * 0.65, D / 2 + 2);
+  const { width: W, depth: D, height: H } = p;
+  const G = Math.min(p.glue, D * 0.6);
+  const x = [0, W, W + D, 2 * W + D, 2 * W + 2 * D];
+  const R = Math.max(D * 0.578, D / 2 + 1); // telhado (inclinado)
   const h = Math.sqrt(R * R - (D * D) / 4); // altura do telhado
-  const e = Math.min(W * 0.12, h * 0.5); // recuo das águas laterais
-  const Rt = Math.hypot(h, e);
-  const T = Math.max(10, p.tuck);
+  const e = Math.min(D * 0.166, W * 0.2); // recuo das pontas do telhado
+  const Th = Math.max(8, p.tuck); // altura da alça
   const alpha = deg(Math.asin(D / (2 * R)));
   const gamma = deg(Math.atan(e / h));
+  const P = Math.PI;
+
   const roof = (x0: number): Vec2[] => [[x0, 0], [x0 + W, 0], [x0 + W - e, -R], [x0 + e, -R]];
+
+  // alça: orelhas redondas nas pontas, rampa até o topo reto, recorte para a mão
   const grip = (x0: number, id: string, parent: string): TFace => {
-    const w = W - 2 * e;
-    const s = Math.min(T * 0.3, w * 0.15);
-    const hw = Math.min(w * 0.42, 40), hh = Math.min(T * 0.32, 12);
+    const w = W - 2 * e, x1 = x0 + w;
+    const r = Math.min(D * 0.087, w * 0.12, Th * 0.3);
+    const cy = -R - Th * 0.627;
+    const top = -R - Th;
+    const ramp = 2 * r + Th * 0.216;
+    const hw = w * 0.4, hy0 = -R - Th * 0.507, hy1 = -R - 0.8;
     return {
-      id, name: id === 'alca-f' ? 'Alça frente' : 'Alça traseira', parent, angle: -alpha, hinge: [[x0, -R], [x0 + w, -R]],
-      poly: [[x0, -R], [x0 + w, -R], [x0 + w, -R - T + s], [x0 + w - s, -R - T], [x0 + s, -R - T], [x0, -R - T + s]],
-      holes: [roundRect(x0 + (w - hw) / 2, -R - T * 0.2 - hh, hw, hh, hh * 0.35)],
-      label: [x0 + w * 0.12, -R - T * 0.5],
+      id, name: id === 'alca-f' ? 'Alça frente' : 'Alça traseira', parent, angle: -alpha, hinge: [[x0, -R], [x1, -R]],
+      poly: [
+        [x0, -R], [x1, -R],
+        ...arc([x1 - r, cy], r, 0, -P), // orelha direita (de baixo para cima, por fora)
+        [x1 - ramp, top], [x0 + ramp, top],
+        ...arc([x0 + r, cy], r, 0, -P), // orelha esquerda
+      ],
+      holes: [roundRect(x0 + (w - hw) / 2, hy0, hw, hy1 - hy0, Math.min((hy1 - hy0) * 0.35, hw * 0.12))],
+      label: [x0 + r, -R - Th * 0.2],
     };
   };
-  const tri = (x0: number): Vec2[] => [[x0, 0], [x0 + D, 0], [x0 + D / 2, -Rt]];
-  const vw = W * 0.72, vh = H * 0.62;
-  faces.push(
-    ...lockBottom(b),
-    { id: 'telhado-f', name: 'Telhado frente', poly: roof(x[1]), parent: 'frente', hinge: [[x[1], 0], [x[2], 0]], angle: alpha },
-    { id: 'telhado-t', name: 'Telhado traseira', poly: roof(x[3]), parent: 'traseira', hinge: [[x[3], 0], [x[4], 0]], angle: alpha },
-    grip(x[1] + e, 'alca-f', 'telhado-f'),
-    grip(x[3] + e, 'alca-t', 'telhado-t'),
-    { id: 'topo-esq', name: 'Topo esq.', poly: tri(0), parent: 'lat-esq', hinge: [[0, 0], [D, 0]], angle: gamma },
-    { id: 'topo-dir', name: 'Topo dir.', poly: tri(x[2]), parent: 'lat-dir', hinge: [[x[2], 0], [x[3], 0]], angle: gamma },
-  );
-  // visor na traseira
-  const back = faces.find((f) => f.id === 'traseira')!;
-  back.holes = [roundRect(x[3] + (W - vw) / 2, (H - vh) / 2, vw, vh, Math.min(4, vh / 4))];
-  back.label = [x[3] + W / 2, (H - vh) / 4];
-  return withOrder(faces, { ...BOTTOM_ORDER, 'topo-esq': 6, 'topo-dir': 6, 'telhado-f': 7, 'telhado-t': 7, 'alca-f': 8, 'alca-t': 8 });
+
+  // lateral: triângulo de ponta redonda com fenda que prende as alças
+  const Ht = D * 0.878, rt = D * 0.12;
+  const s0 = Math.hypot(h, e); // altura (no plano do triângulo) do topo do telhado
+  const tri = (x0: number, id: string, name: string, parent: string): TFace => {
+    const c: Vec2 = [x0 + D / 2, -Ht + rt];
+    const th = Math.atan2(Ht, D / 2); // inclinação das bordas
+    const a0 = -P / 2 - (P / 2 - th), a1 = -P / 2 + (P / 2 - th);
+    const sl = Math.min(D * 0.38, Ht - rt - s0 - 1);
+    return {
+      id, name, parent, hinge: [[x0, 0], [x0 + D, 0]], angle: gamma,
+      poly: [[x0, 0], [x0 + D, 0], ...arc(c, rt, a1, a0, 8)],
+      holes: sl > 2 ? [roundRect(x0 + D / 2 - 0.45, -s0 - sl, 0.9, sl, 0.45)] : [],
+      label: [x0 + D * 0.3, -2],
+    };
+  };
+
+  // fundo 1-2-3
+  const fd = D * 0.7, rc = D * 0.053, half = D / 2;
+  const nx0 = W * 0.25, nx1 = W * 0.75, nd = fd * 0.286;
+  const front: Vec2[] = [
+    [0, H], [W, H], ...arc([W - rc, H + fd - rc], rc, 0, P / 2, 3), [nx1, H + fd], [nx1, H + fd - nd], [nx0, H + fd - nd], [nx0, H + fd],
+    ...arc([rc, H + fd - rc], rc, P / 2, P, 3),
+  ];
+  const sideR = (x0: number): Vec2[] => [[x0, H], [x0 + D, H], [x0 + D, H + fd], ...arc([x0 + half + rc, H + fd - rc], rc, P / 2, P, 3), [x0 + half, H + half]];
+  const sideL = (x0: number): Vec2[] => [[x0, H], [x0 + D, H], [x0 + half, H + half], ...arc([x0 + half - rc, H + fd - rc], rc, 0, P / 2, 3), [x0, H + fd]];
+  const tongue = (x0: number): Vec2[] => [
+    [x0, H], [x0 + W, H], [x0 + W - half, H + half], ...arc([x0 + W - half - rc, H + fd - rc], rc, 0, P / 2, 3),
+    ...arc([x0 + half + rc, H + fd - rc], rc, P / 2, P, 3), [x0 + half, H + half],
+  ];
+
+  const vw = W * 0.8, vh = H * 0.667;
+  const g = Math.min(G * 0.3, H / 4);
+  const faces: TFace[] = [
+    { id: 'frente', name: 'Frente', poly: rect(0, 0, W, H) },
+    { id: 'lat-dir', name: 'Lateral dir.', poly: rect(x[1], 0, D, H), parent: 'frente', hinge: [[x[1], 0], [x[1], H]], angle: 90 },
+    { id: 'traseira', name: 'Traseira', poly: rect(x[2], 0, W, H), parent: 'lat-dir', hinge: [[x[2], 0], [x[2], H]], angle: 90,
+      holes: [roundRect(x[2] + (W - vw) / 2, (H - vh) / 2, vw, vh, H * 0.08)], label: [x[2] + W / 2, (H - vh) / 4] },
+    { id: 'lat-esq', name: 'Lateral esq.', poly: rect(x[3], 0, D, H), parent: 'traseira', hinge: [[x[3], 0], [x[3], H]], angle: 90 },
+    { id: 'aba-cola', name: 'Aba de cola', poly: [[0, 0], [-G, g], [-G, H - g], [0, H]], parent: 'frente', hinge: [[0, 0], [0, H]], angle: 90 },
+    { id: 'telhado-f', name: 'Telhado frente', poly: roof(0), parent: 'frente', hinge: [[0, 0], [W, 0]], angle: alpha },
+    { id: 'telhado-t', name: 'Telhado traseira', poly: roof(x[2]), parent: 'traseira', hinge: [[x[2], 0], [x[3], 0]], angle: alpha },
+    grip(e, 'alca-f', 'telhado-f'),
+    grip(x[2] + e, 'alca-t', 'telhado-t'),
+    tri(x[1], 'topo-dir', 'Topo dir.', 'lat-dir'),
+    tri(x[3], 'topo-esq', 'Topo esq.', 'lat-esq'),
+    { id: 'fundo-frente', name: 'Fundo frente', poly: front, parent: 'frente', hinge: [[0, H], [W, H]], angle: 90, label: [W * 0.1, H + fd * 0.5] },
+    { id: 'fundo-dir', name: 'Fundo dir.', poly: sideR(x[1]), parent: 'lat-dir', hinge: [[x[1], H], [x[2], H]], angle: 90, label: [x[1] + D * 0.8, H + D * 0.2] },
+    { id: 'fundo-tras', name: 'Fundo traseira', poly: tongue(x[2]), parent: 'traseira', hinge: [[x[2], H], [x[3], H]], angle: 90 },
+    { id: 'fundo-esq', name: 'Fundo esq.', poly: sideL(x[3]), parent: 'lat-esq', hinge: [[x[3], H], [x[4], H]], angle: 90, label: [x[3] + D * 0.2, H + D * 0.2] },
+  ];
+  return withOrder(faces, {
+    'aba-cola': 1, 'lat-dir': 2, traseira: 2, 'lat-esq': 2, 'fundo-dir': 3, 'fundo-esq': 3, 'fundo-tras': 4, 'fundo-frente': 5,
+    'telhado-f': 6, 'telhado-t': 6, 'alca-f': 7, 'alca-t': 7, 'topo-dir': 8, 'topo-esq': 8,
+  });
 }
 
 /**

@@ -411,7 +411,7 @@ export const PRESETS: Preset[] = [
   { id: 'pyramid', name: 'Caixa pirâmide', desc: 'Festa, fechada com fita', template: 'pyramid', params: { width: 50, height: 60 } },
   { id: 'prism', name: 'Caixa prisma', desc: 'Chocolate, tubete triangular', template: 'prism', params: { width: 45, height: 120, tuck: 12, glue: 12 } },
   { id: 'milk', name: 'Caixa milk', desc: 'Lembrancinha de festa com alça', template: 'milk', params: { width: 60, depth: 60, height: 90, tuck: 14, glue: 12 } },
-  { id: 'gable', name: 'Caixa maleta', desc: 'Caixa surpresa com alça e visor', template: 'gable', params: { width: 85, depth: 45, height: 55, tuck: 25, glue: 12 } },
+  { id: 'gable', name: 'Caixa maleta', desc: 'Caixa surpresa com alça e visor', template: 'gable', params: { width: 88, depth: 44, height: 53, tuck: 22, glue: 13 } },
   { id: 'heart', name: 'Caixa coração', desc: 'Corações no topo e visor', template: 'heart', params: { width: 62, depth: 62, height: 62, glue: 12 } },
   { id: 'tallPyramid', name: 'Pirâmide alta', desc: 'Obelisco para doces e bombons', template: 'tallPyramid', params: { width: 55, height: 110 } },
   { id: 'hex', name: 'Caixa sextavada', desc: 'Brinde, vela, doces finos', template: 'hexBox', params: { width: 30, height: 45, tuck: 12, glue: 12 } },
