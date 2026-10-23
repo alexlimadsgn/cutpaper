@@ -149,7 +149,7 @@ export function milkBox(p: BoxParams): TFace[] {
   solveAngle(faces, 'canto-esq-e', [0, -R], 'telhado-t', [x[4], -R]);
   return withOrder(faces, {
     ...BOTTOM_ORDER, 'fole-esq': 6, 'fole-dir': 6, 'canto-esq-e': 6, 'canto-esq-d': 6, 'canto-dir-e': 6, 'canto-dir-d': 6, 'cola-alta': 1,
-    'telhado-f': 6, 'telhado-t': 6, 'alca-f': 7, 'alca-t': 7,
+    'telhado-f': 6, 'telhado-t': 6, 'alca-f': 6, 'alca-t': 6,
   });
 }
 
