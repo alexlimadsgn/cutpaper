@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from 'react';
 import { create } from 'zustand';
 import { normalize, type Graph } from './geometry/graph';
 import { PRESETS, TEMPLATES, type TemplateId } from './geometry/templates';
@@ -354,6 +355,18 @@ export const useStore = create<State>((set, get) => ({
     set((s) => ({ fitToken: s.fitToken + 1 }));
   },
 }));
+
+/*
+ * Estado "assentado": igual ao estado atual, mas parado durante um arrasto (pontos, alças, objetos).
+ * Painéis, camadas e barras usam este; só o editor e o 3D acompanham o arrasto ao vivo.
+ * Assim um arrasto não redesenha a interface inteira a cada movimento do mouse.
+ */
+let settled = useStore.getState();
+useStore.subscribe((st) => { if (!st.dragging) settled = st; });
+const getSettled = () => settled;
+export function useSettledStore(): State {
+  return useSyncExternalStore(useStore.subscribe, getSettled, getSettled);
+}
 
 // facilita depuração no console do navegador (somente em dev)
 if (import.meta.env.DEV) (window as unknown as { cutpaper: typeof useStore }).cutpaper = useStore;

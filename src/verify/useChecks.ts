@@ -1,13 +1,13 @@
 import { useMemo } from 'react';
-import { useStore } from '../store';
-import { useDieline } from '../useDieline';
+import { useSettledStore } from '../store';
+import { useSettledDieline } from '../useDieline';
 import { runChecks } from './checks';
 import { useImageSizes } from './useImageSizes';
 
 /** Problemas de montagem e pré-impressão do projeto atual. */
 export function useChecks() {
-  const { dieline, conflicts } = useDieline();
-  const s = useStore();
+  const { dieline, conflicts } = useSettledDieline();
+  const s = useSettledStore();
   const { graph } = s.doc;
   const objects = useMemo(() => s.doc.objects.filter((o) => o.side !== 'in'), [s.doc.objects]);
   const srcs = [

@@ -5,8 +5,8 @@ import { layoutSheet, PAPERS, placePoint, type ImposeOptions, type PaperId } fro
 import { buildPdf } from '../export/pdf';
 import { viewBoxOf } from '../export/svg';
 import type { Vec2 } from '../geometry/types';
-import { hasInterior, useStore } from '../store';
-import { useDieline } from '../useDieline';
+import { hasInterior, useSettledStore } from '../store';
+import { useSettledDieline } from '../useDieline';
 import { Check, CompactSelect, FieldLabel, NumField } from './ui';
 
 interface Saved { paper: PaperId; customW: number; customH: number; margin: number; gap: number; quantity: number; rotate: boolean }
@@ -20,8 +20,8 @@ const path = (pts: Vec2[], closed = false) => 'M' + pts.map(([x, y]) => `${+x.to
 
 /** Montar na folha: escolhe papel e quantidade, mostra a prévia e gera o PDF com várias peças por folha. */
 export function ImposeDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const s = useStore();
-  const { dieline, material, bleedPolys } = useDieline();
+  const s = useSettledStore();
+  const { dieline, material, bleedPolys } = useSettledDieline();
   const [o, setO] = useState<Saved>(load);
   const [busy, setBusy] = useState(false);
   useEffect(() => { try { localStorage.setItem(KEY, JSON.stringify(o)); } catch { /* sem armazenamento */ } }, [o]);

@@ -5,8 +5,8 @@ import {
 } from 'lucide-react';
 import { FONTS } from '../art/fonts';
 import { imageRect, toWorld, type ArtObject } from '../art/objects';
-import { useStore } from '../store';
-import { useDieline } from '../useDieline';
+import { useSettledStore } from '../store';
+import { useSettledDieline } from '../useDieline';
 import { ColorField } from './ColorField';
 import { CompactSelect, IconToggles, NumField, Section, pickImage } from './ui';
 
@@ -15,7 +15,7 @@ const r = (n: number) => +n.toFixed(2);
 
 /** Corte da imagem (máscara não destrutiva): ajustar, preencher, imagem inteira e zoom. */
 function ImageCrop({ o }: { o: ArtObject }) {
-  const s = useStore();
+  const s = useSettledStore();
   const c = imageRect(o);
   const editing = s.cropEdit === o.id;
   const zoom = (f: number) => {
@@ -51,8 +51,8 @@ function ImageCrop({ o }: { o: ArtObject }) {
 
 /** Propriedades do objeto de arte selecionado (layout compacto, estilo Figma). */
 export function ObjectProps({ o }: { o: ArtObject }) {
-  const s = useStore();
-  const { dieline } = useDieline();
+  const s = useSettledStore();
+  const { dieline } = useSettledDieline();
   const up = (patch: Partial<ArtObject>) => s.updateObject(o.id, patch);
 
   return (

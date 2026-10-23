@@ -20,13 +20,13 @@ import { buildPdf } from './export/pdf';
 import { buildBackSvg, buildSvg, download } from './export/svg';
 import { openProjectFile, saveProjectFile } from './io/project';
 import { openSvgFile } from './io/openSvg';
-import { hasInterior, useStore } from './store';
-import { useDieline } from './useDieline';
+import { hasInterior, useSettledStore, useStore } from './store';
+import { useSettledDieline } from './useDieline';
 import { useChecks } from './verify/useChecks';
 
 
 export default function App() {
-  const s = useStore();
+  const s = useSettledStore();
   useFontLoader();
   return (
     <Flex direction="column" h="100vh" bg="gray.100">
@@ -58,8 +58,8 @@ function ThemeToggle() {
 }
 
 function TopBar() {
-  const s = useStore();
-  const { dieline } = useDieline();
+  const s = useSettledStore();
+  const { dieline } = useSettledDieline();
   const [busy, setBusy] = useState<string | null>(null);
   const [impose, setImpose] = useState(false);
   const stamp = () => new Date().toISOString().slice(0, 10);
@@ -206,7 +206,7 @@ function RailButton({ label, active, onClick, children }: { label: string; activ
 
 /** Ferramentas do modo atual. */
 function ToolRail() {
-  const s = useStore();
+  const s = useSettledStore();
   const [about, setAbout] = useState(false);
   const select = <RailButton label="Selecionar (V)" active={s.tool === 'select'} onClick={() => s.setTool('select')}><MousePointer2 size={16} /></RailButton>;
   return (
@@ -302,8 +302,8 @@ function ModeSelect() {
 }
 
 function StatusBar() {
-  const s = useStore();
-  const { dieline, viewBox } = useDieline();
+  const s = useSettledStore();
+  const { dieline, viewBox } = useSettledDieline();
   const issues = useChecks();
   const errors = issues.filter((i) => i.severity === 'error').length;
   const warnings = issues.filter((i) => i.severity === 'warning').length;

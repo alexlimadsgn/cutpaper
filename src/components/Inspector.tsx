@@ -5,16 +5,16 @@ import { DEFAULT_ANGLE, deleteEdges, deleteVertices, normalize, updateEdges, typ
 import { faceOfHinge, withSteps } from '../geometry/faces';
 import { edgePoints, isCurved, straightHandles } from '../geometry/curve';
 import { stepCount } from '../geometry/fold';
-import { useStore } from '../store';
-import { useDieline } from '../useDieline';
+import { useSettledStore } from '../store';
+import { useSettledDieline } from '../useDieline';
 import { IconToggles, NumField, Section } from './ui';
 
 const Hint = ({ children }: { children: ReactNode }) => <Text fontSize="10px" color="gray.500" mt={2}>{children}</Text>;
 
 /** Propriedades do que está selecionado no editor (arestas, vértices ou face). */
 export function Inspector() {
-  const s = useStore();
-  const { dieline, conflicts } = useDieline();
+  const s = useSettledStore();
+  const { dieline, conflicts } = useSettledDieline();
   const g = s.doc.graph;
   const { edges, vertices, face } = s.sel;
 

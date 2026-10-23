@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { COLORS } from '../export/svg';
 import { clearSteps } from '../geometry/faces';
 import { stepCount } from '../geometry/fold';
-import { useStore } from '../store';
-import { useDieline } from '../useDieline';
+import { useSettledStore, useStore } from '../store';
+import { useSettledDieline } from '../useDieline';
 import type { Issue, Severity } from '../verify/checks';
 import { autoFix } from '../verify/autofix';
 import { rectify } from '../verify/rectify';
@@ -20,9 +20,9 @@ const SEV: Record<Severity, { icon: typeof Info; color: string; bg: string; labe
 
 /** Propriedades do modo Verificar: dobra, animação e lista de problemas. */
 export function VerifyProps() {
-  const s = useStore();
+  const s = useSettledStore();
   const issues = useChecks();
-  const { dieline } = useDieline();
+  const { dieline } = useSettledDieline();
   const steps = stepCount(dieline.faces);
   const stepFaces = Array.from({ length: steps }, (_, i) => dieline.faces.filter((f) => f.step === i + 1));
   const current = s.fold <= 0 ? 0 : Math.min(steps, Math.ceil(s.fold * steps - 1e-6));

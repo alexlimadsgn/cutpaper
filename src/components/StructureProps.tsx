@@ -1,14 +1,14 @@
 import { Box, SimpleGrid, Text } from '@chakra-ui/react';
 import { graphBounds, scaleGraph } from '../geometry/graph';
 import { TEMPLATES, type TemplateId } from '../geometry/templates';
-import { useStore } from '../store';
+import { useSettledStore } from '../store';
 import { SideSwitch } from './ArtProps';
 import { Inspector } from './Inspector';
 import { Check, CompactSelect, NumField, Section } from './ui';
 
 /** Propriedades do modo Edição: seleção + molde + modelo paramétrico. */
 export function StructureProps() {
-  const s = useStore();
+  const s = useSettledStore();
   const { params, setParam } = s;
   const b = graphBounds(s.doc.graph);
   const lim = TEMPLATES[s.template].limits(params);

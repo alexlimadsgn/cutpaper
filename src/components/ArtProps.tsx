@@ -3,16 +3,16 @@ import {
   AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical, AlignStartHorizontal, AlignStartVertical,
   ImagePlus, Trash2, X,
 } from 'lucide-react';
-import { selectedObjects, sideArt, useStore } from '../store';
-import { useDieline } from '../useDieline';
+import { selectedObjects, sideArt, useSettledStore, useStore } from '../store';
+import { useSettledDieline } from '../useDieline';
 import { ColorField } from './ColorField';
 import { ObjectProps } from './ObjectProps';
 import { IconToggles, Section, pickImage } from './ui';
 
 /** Propriedades do modo Arte: objeto selecionado, fundo da face ou do molde inteiro. */
 export function ArtProps() {
-  const s = useStore();
-  const { dieline } = useDieline();
+  const s = useSettledStore();
+  const { dieline } = useSettledDieline();
   const face = dieline.faces.find((f) => f.id === s.sel.face);
   const obj = s.doc.objects.find((o) => o.id === s.sel.object);
   const art = sideArt(s);
@@ -98,7 +98,7 @@ export function ImageSlot({ url, onPick, onClear }: { label?: string; url?: stri
 
 /** Vários objetos selecionados (Shift): alinhar entre si e excluir. */
 function MultiProps({ ids }: { ids: string[] }) {
-  const s = useStore();
+  const s = useSettledStore();
   const list = s.doc.objects.filter((o) => ids.includes(o.id));
   const x0 = Math.min(...list.map((o) => o.x)), x1 = Math.max(...list.map((o) => o.x + o.w));
   const y0 = Math.min(...list.map((o) => o.y)), y1 = Math.max(...list.map((o) => o.y + o.h));

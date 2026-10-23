@@ -6,8 +6,8 @@ import {
 import { useEffect, useState } from 'react';
 import type { ArtObject } from '../art/objects';
 import type { Face } from '../geometry/types';
-import { selectedObjects, sideArt, useStore } from '../store';
-import { useDieline } from '../useDieline';
+import { selectedObjects, sideArt, useSettledStore } from '../store';
+import { useSettledDieline } from '../useDieline';
 
 const OBJ_ICON = { rect: Square, ellipse: Circle, text: Type, image: ImageIcon };
 const FREE = '__free';
@@ -24,8 +24,8 @@ function loadPrefs(): { collapsed: string[]; minimized: boolean } {
 
 /** Camadas organizadas pelas faces da caixa (árvore de dobras), com os objetos de arte de cada face. */
 export function LayersPanel() {
-  const { dieline, conflicts } = useDieline();
-  const s = useStore();
+  const { dieline, conflicts } = useSettledDieline();
+  const s = useSettledStore();
   const bad = new Set(conflicts.map((c) => c.face));
   const faceIds = new Set(dieline.faces.map((f) => f.id));
 
