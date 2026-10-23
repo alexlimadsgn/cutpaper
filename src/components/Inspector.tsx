@@ -1,8 +1,9 @@
 import { Box, Button, Flex, SimpleGrid, Text } from '@chakra-ui/react';
-import { ArrowLeftRight, FoldVertical, ListOrdered, Ruler, Trash2 } from 'lucide-react';
+import { ArrowLeftRight, FoldVertical, ListOrdered, Ruler, Spline, Trash2 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { DEFAULT_ANGLE, deleteEdges, deleteVertices, normalize, updateEdges, type EdgeType } from '../geometry/graph';
 import { faceOfHinge, withSteps } from '../geometry/faces';
+import { edgePoints, isCurved, straightHandles } from '../geometry/curve';
 import { stepCount } from '../geometry/fold';
 import { useStore } from '../store';
 import { useDieline } from '../useDieline';
@@ -22,8 +23,29 @@ export function Inspector() {
     const type = list.every((e) => e.type === list[0].type) ? list[0].type : undefined;
     const creaseIds = edges.filter((id) => g.e[id]?.type === 'crease');
     const crease = creaseIds.length ? g.e[creaseIds[0]] : undefined;
-    const len = list.reduce((sum, e) => sum + Math.hypot(g.v[e.b].x - g.v[e.a].x, g.v[e.b].y - g.v[e.a].y), 0);
-    const setType = (t: EdgeType) => s.commit({ graph: updateEdges(g, edges, { type: t, ...(t === 'crease' ? { angle: DEFAULT_ANGLE } : {}) }) });
+    const len = edges.reduce((sum, id) => {
+      if (!g.e[id]) return sum;
+      const pts = edgePoints(g, id);
+      return sum + pts.reduce((l, q, i) => (i ? l + Math.hypot(q[0] - pts[i - 1][0], q[1] - pts[i - 1][1]) : l), 0);
+    }, 0);
+    // vinco é sempre reto
+    const setType = (t: EdgeType) => s.commit({ graph: updateEdges(g, edges, { type: t, ...(t === 'crease' ? { angle: DEFAULT_ANGLE, c1: undefined, c2: undefined } : {}) }) });
+    const cutIds = edges.filter((id) => g.e[id]?.type === 'cut');
+    const anyCurved = cutIds.some((id) => isCurved(g.e[id]));
+    const toggleCurve = () => {
+      const e = { ...g.e };
+      for (const id of cutIds) {
+        const ed = e[id], A = g.v[ed.a], B = g.v[ed.b];
+        if (anyCurved) e[id] = { ...ed, c1: undefined, c2: undefined };
+        else {
+          // curva suave para fora: alças a 1/3 e 2/3, deslocadas 1/4 do comprimento
+          const [h1, h2] = straightHandles([A.x, A.y], [B.x, B.y]);
+          const dx = B.x - A.x, dy = B.y - A.y, k = 0.25;
+          e[id] = { ...ed, c1: [h1[0] + dy * k, h1[1] - dx * k], c2: [h2[0] + dy * k, h2[1] - dx * k] };
+        }
+      }
+      s.commit({ graph: { ...g, e } });
+    };
     const setAngle = (a: number) => s.commit({ graph: updateEdges(g, creaseIds, { angle: Math.max(-180, Math.min(180, a)) }) });
     const f = crease ? faceOfHinge(g, dieline, creaseIds[0]) : undefined;
     const total = stepCount(dieline.faces);
@@ -45,7 +67,12 @@ export function Inspector() {
             { key: 'cut', icon: <Text fontSize="11px" color={type === 'cut' ? 'red.600' : undefined}>Corte</Text>, active: type === 'cut', title: 'Linha de corte', onClick: () => setType('cut') },
             { key: 'crease', icon: <Text fontSize="11px" color={type === 'crease' ? 'blue.600' : undefined}>Vinco</Text>, active: type === 'crease', title: 'Linha de vinco', onClick: () => setType('crease') },
           ]} />
-          <Hint>Comprimento {len.toFixed(2).replace('.', ',')} mm · duplo clique na linha insere vértice</Hint>
+          {cutIds.length > 0 && (
+            <Button size="2xs" variant="subtle" w="full" mt={1.5} onClick={toggleCurve} title="Também: Ctrl + arrastar a linha para curvar">
+              <Spline size={12} /> {anyCurved ? 'Tornar reta' : 'Curvar'}
+            </Button>
+          )}
+          <Hint>Comprimento {len.toFixed(2).replace('.', ',')} mm · duplo clique na linha insere ponto · Ctrl + arrastar curva a linha · duplo clique no ponto: canto ↔ suave</Hint>
         </Section>
 
         {crease && (

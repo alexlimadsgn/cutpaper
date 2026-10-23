@@ -43,7 +43,7 @@ export const hasInterior = (s: { interior: SideArt; doc: { objects: { side?: Art
   !!(s.interior.bgColor || s.interior.fullImage || Object.keys(s.interior.faceColors).length ||
     Object.keys(s.interior.faceImages).length || s.doc.objects.some((o) => o.side === 'in'));
 
-export type Tool = 'select' | 'cut' | 'crease' | 'rect' | 'ellipse' | 'text';
+export type Tool = 'select' | 'cut' | 'crease' | 'pen' | 'rect' | 'ellipse' | 'text';
 
 /** Modo de trabalho: desenhar o molde, decorar, ou conferir a montagem. */
 export type Mode = 'structure' | 'art' | 'verify';

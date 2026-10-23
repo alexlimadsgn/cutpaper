@@ -1,6 +1,6 @@
 import { Box, Button, Flex, Heading, IconButton, Menu, Portal, Text } from '@chakra-ui/react';
 import {
-  Box as BoxIcon, ChevronDown, Circle, Download, FileCode, FilePlus, FileText, FolderOpen, Info, Paintbrush, Save, Spline, Square, Type, FoldVertical, ImagePlus, LayoutGrid, Map as MapIcon, Minimize2, Moon, Sun, MousePointer2, Redo2, Scissors, Undo2, Upload,
+  Box as BoxIcon, ChevronDown, Circle, Download, FileCode, FilePlus, FileText, FolderOpen, Info, Paintbrush, Save, Spline, Square, Type, FoldVertical, ImagePlus, LayoutGrid, Map as MapIcon, PenTool, Minimize2, Moon, Sun, MousePointer2, Redo2, Scissors, Undo2, Upload,
 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { AboutDialog } from './components/AboutDialog';
@@ -216,6 +216,7 @@ function ToolRail() {
         <>
           <RailButton label="Linha de corte (C)" active={s.tool === 'cut'} onClick={() => s.setTool('cut')}><Scissors size={16} /></RailButton>
           <RailButton label="Linha de vinco (D)" active={s.tool === 'crease'} onClick={() => s.setTool('crease')}><FoldVertical size={16} /></RailButton>
+          <RailButton label="Caneta: corte com curvas (P)" active={s.tool === 'pen'} onClick={() => s.setTool('pen')}><PenTool size={16} /></RailButton>
         </>
       )}
       {s.mode === 'art' && (

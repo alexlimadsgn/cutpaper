@@ -1,3 +1,4 @@
+import { baseEdgeId, flattenCurves } from './curve';
 import { byId, type EdgeType, type Graph } from './graph';
 import type { Dieline, Face, Vec2 } from './types';
 
@@ -130,7 +131,9 @@ function chain(g: Graph, type: EdgeType, skip: Set<string> = new Set()): Vec2[][
  * Deriva o molde completo a partir do grafo:
  * faces (com furos), descarte de janelas, árvore de dobras e polilinhas de corte/vinco.
  */
-export function deriveDieline(g: Graph, names: Record<string, string> = {}, rootId?: string): Dieline {
+export function deriveDieline(g0: Graph, names: Record<string, string> = {}, rootId?: string): Dieline {
+  // curvas viram cadeias de retas curtas; o restante do cálculo só lida com retas
+  const g = flattenCurves(g0);
   const loops = traceLoops(g);
   const find = components(g);
   const pts = (l: Loop) => l.verts.map((v) => [g.v[v].x, g.v[v].y] as Vec2);
@@ -246,7 +249,7 @@ export function deriveDieline(g: Graph, names: Record<string, string> = {}, root
 
   const edgeFaces: Record<string, string[]> = {};
   for (const f of faces.values())
-    for (const e of new Set(f.loop.edges)) (edgeFaces[e] ??= []).push(f.id);
+    for (const e of new Set(f.loop.edges.map(baseEdgeId))) (edgeFaces[e] ??= []).push(f.id);
 
   return { faces: list, cuts: chain(g, 'cut'), creases: chain(g, 'crease', new Set(dead)), dead, edgeFaces };
 }

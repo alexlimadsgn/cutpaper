@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as
 import { center, createObject, imageRect, objectToSvg, toLocal, toWorld, type ArtObject, type ArtType } from '../art/objects';
 import { buildArt, COLORS, objectClip } from '../export/svg';
 import { sideArt } from '../store';
+import { bezierPoints, distToEdge, edgePath, isCurved, straightHandles } from '../geometry/curve';
 import { faceAt, flapIds } from '../geometry/faces';
 import {
   addSegments, deleteEdges, deleteVertices, moveVertices, normalize, setEdgeLength, splitEdge, type Graph,
@@ -22,7 +23,13 @@ type Interaction =
   | { kind: 'obj-resize'; base: ArtObject; hx: number; hy: number; moved: boolean }
   | { kind: 'obj-rotate'; base: ArtObject; moved: boolean }
   | { kind: 'obj-pan'; base: ArtObject; start: Vec2; moved: boolean }
-  | { kind: 'obj-create'; type: ArtType; start: Vec2; cur: Vec2; face?: string };
+  | { kind: 'obj-create'; type: ArtType; start: Vec2; cur: Vec2; face?: string }
+  /** Alça de curva (end 1 = c1, perto de a; 2 = c2, perto de b). */
+  | { kind: 'ctrl'; eid: string; end: 1 | 2; base: Graph; moved: boolean }
+  /** Curvar uma linha arrastando o meio dela (Ctrl + arrastar). */
+  | { kind: 'bend'; eid: string; start: Vec2; base: Graph; h: [Vec2, Vec2]; moved: boolean }
+  /** Caneta: ponto pressionado; arrastar puxa as alças. */
+  | { kind: 'pen'; p: Vec2; drag: Vec2 | null; close: boolean };
 
 interface Snap {
   p: Vec2;
@@ -48,6 +55,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
   const editable = s.mode === 'structure' && !compact;
   const artMode = s.mode === 'art' && !compact;
   const isLineTool = s.tool === 'cut' || s.tool === 'crease';
+  const isPen = s.tool === 'pen';
   const selObj = objects.find((o) => o.id === s.sel.object);
   const wrapRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -56,6 +64,8 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
   const act = useRef<Interaction | null>(null);
   const [marquee, setMarquee] = useState<[Vec2, Vec2] | null>(null);
   const [draw, setDraw] = useState<{ start: Vec2 | null; hover: Snap | null }>({ start: null, hover: null });
+  /** Caneta: último ponto e a alça que sai dele (null = canto). */
+  const [pen, setPen] = useState<{ start: Vec2 | null; out: Vec2 | null; drag: Vec2 | null }>({ start: null, out: null, drag: null });
   const [creating, setCreating] = useState<{ type: ArtType; a: Vec2; b: Vec2 } | null>(null);
   const [space, setSpace] = useState(false);
   const [dragGuides, setDragGuides] = useState<[Vec2, Vec2][]>([]);
@@ -136,11 +146,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
     if (edges) {
       bd = r * 0.75;
       for (const id in graph.e) {
-        const e = graph.e[id], A = graph.v[e.a], B = graph.v[e.b];
-        const dx = B.x - A.x, dy = B.y - A.y;
-        const t = Math.max(0, Math.min(1, ((p[0] - A.x) * dx + (p[1] - A.y) * dy) / (dx * dx + dy * dy)));
-        const q: Vec2 = [A.x + t * dx, A.y + t * dy];
-        const d = Math.hypot(q[0] - p[0], q[1] - p[1]);
+        const { d, q } = distToEdge(graph, id, p);
         if (d < bd) { bd = d; best = { p: q, kind: 'edge' }; }
       }
       if (best) return best;
@@ -255,6 +261,15 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
       return;
     }
 
+    if (isPen && editable) {
+      const snap = snapPoint(p, undefined, true, pen.start);
+      let pt = snap.p;
+      if (pen.start && e.shiftKey && snap.kind !== 'vertex') pt = constrain(pen.start, p);
+      act.current = { kind: 'pen', p: pt, drag: null, close: !!pen.start && snap.kind === 'vertex' };
+      setDraw({ start: pen.start, hover: { ...snap, p: pt } });
+      return;
+    }
+
     if (isLineTool) {
       const snap = snapPoint(p, undefined, true, draw.start);
       let pt = snap.p;
@@ -309,6 +324,22 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
       }
     }
 
+    if (kind === 'ctrl' && id && editable) {
+      const [eid, end] = id.split(':');
+      act.current = { kind: 'ctrl', eid, end: +end as 1 | 2, base: graph, moved: false };
+      s.beginDrag();
+      return;
+    }
+    if (kind === 'edge' && id && editable && (e.ctrlKey || e.metaKey) && graph.e[id]?.type === 'cut') {
+      // Ctrl + arrastar: curva a linha (como a ferramenta de dobrar curvas do Figma)
+      const ed = graph.e[id], A: Vec2 = [graph.v[ed.a].x, graph.v[ed.a].y], B: Vec2 = [graph.v[ed.b].x, graph.v[ed.b].y];
+      const h: [Vec2, Vec2] = isCurved(ed) ? [ed.c1!, ed.c2!] : straightHandles(A, B);
+      s.select({ edges: [id] });
+      act.current = { kind: 'bend', eid: id, start: p, base: graph, h, moved: false };
+      s.beginDrag();
+      return;
+    }
+
     if (kind === 'vertex' && id) {
       let verts = s.sel.vertices;
       if (e.shiftKey) {
@@ -351,6 +382,51 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
     const p0 = toMM(e.clientX, e.clientY);
     const p = s.mode === 'structure' ? toPaper(p0) : p0;
     const a = act.current;
+    if (a?.kind === 'pen') {
+      if (Math.hypot(p[0] - a.p[0], p[1] - a.p[1]) > 2 * px) { a.drag = p; setPen((cur) => ({ ...cur, drag: p })); }
+      return;
+    }
+    if (!a && isPen) {
+      const snap = snapPoint(p, undefined, true, pen.start);
+      if (pen.start && e.shiftKey && snap.kind !== 'vertex') { snap.p = constrain(pen.start, p); snap.guides = undefined; }
+      setDraw({ start: pen.start, hover: snap });
+      return;
+    }
+    if (a?.kind === 'ctrl') {
+      const ed = a.base.e[a.eid];
+      if (!ed) return;
+      const anchorId = a.end === 1 ? ed.a : ed.b;
+      const anchor = a.base.v[anchorId];
+      let q: Vec2 = p;
+      if (e.shiftKey) q = constrain([anchor.x, anchor.y], p);
+      const ng = { ...a.base, e: { ...a.base.e, [a.eid]: { ...ed, [a.end === 1 ? 'c1' : 'c2']: q } } };
+      // ponto suave: a alça do outro lado acompanha (alinhada, mantém o próprio tamanho); Alt solta
+      if (!e.altKey) {
+        const mine = a.end === 1 ? ed.c1! : ed.c2!;
+        for (const oid in a.base.e) {
+          if (oid === a.eid) continue;
+          const o = a.base.e[oid];
+          if (!isCurved(o) || (o.a !== anchorId && o.b !== anchorId)) continue;
+          const key = o.a === anchorId ? 'c1' : 'c2';
+          const h = o[key]!;
+          const u: Vec2 = [mine[0] - anchor.x, mine[1] - anchor.y], w: Vec2 = [h[0] - anchor.x, h[1] - anchor.y];
+          const lu = Math.hypot(...u), lw = Math.hypot(...w);
+          if (lu < 1e-6 || lw < 1e-6 || (u[0] * w[0] + u[1] * w[1]) / (lu * lw) > -0.995) continue; // não era suave
+          const nq: Vec2 = [q[0] - anchor.x, q[1] - anchor.y], lq = Math.hypot(...nq) || 1;
+          ng.e[oid] = { ...o, [key]: [anchor.x - (nq[0] / lq) * lw, anchor.y - (nq[1] / lq) * lw] };
+        }
+      }
+      a.moved = true;
+      s.setGraphLive(ng);
+      return;
+    }
+    if (a?.kind === 'bend') {
+      const d: Vec2 = [((p[0] - a.start[0]) * 4) / 3, ((p[1] - a.start[1]) * 4) / 3];
+      const ed = a.base.e[a.eid];
+      a.moved ||= Math.hypot(...d) > 1e-6;
+      s.setGraphLive({ ...a.base, e: { ...a.base.e, [a.eid]: { ...ed, c1: [a.h[0][0] + d[0], a.h[0][1] + d[1]], c2: [a.h[1][0] + d[0], a.h[1][1] + d[1]] } } });
+      return;
+    }
     if (!a) {
       if (isLineTool) {
         const snap = snapPoint(p, undefined, true, draw.start);
@@ -428,6 +504,22 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
     act.current = null;
     if (!a) return;
     setDragGuides([]);
+    if (a.kind === 'pen') {
+      const pt = a.p;
+      const drag = a.drag;
+      const start = pen.start;
+      if (start && Math.hypot(pt[0] - start[0], pt[1] - start[1]) > 0.01) {
+        const c1 = pen.out ?? start;
+        const c2: Vec2 = drag ? [2 * pt[0] - drag[0], 2 * pt[1] - drag[1]] : pt;
+        const curved = pen.out || drag;
+        s.commit({ graph: addSegments(graph, [{ a: start, b: pt, type: 'cut', ...(curved ? { c1, c2 } : {}) }]) });
+      }
+      // fechar sobre um ponto existente encerra o traço
+      setPen(a.close ? { start: null, out: null, drag: null } : { start: pt, out: drag, drag: null });
+      setDraw({ start: a.close ? null : pt, hover: null });
+      return;
+    }
+    if (a.kind === 'ctrl' || a.kind === 'bend') { s.endDrag(a.moved); return; }
     if (a.kind === 'drag' || a.kind === 'obj-move' || a.kind === 'obj-resize' || a.kind === 'obj-rotate' || a.kind === 'obj-pan') s.endDrag(a.moved);
     if (a.kind === 'obj-create') {
       setCreating(null);
@@ -468,7 +560,13 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
     }
     if (!editable) return;
     if (isLineTool) return setDraw({ start: null, hover: null });
+    if (isPen) { setPen({ start: null, out: null, drag: null }); return setDraw({ start: null, hover: null }); }
     const target = lastDown.current ?? (e.target as Element);
+    if (target.getAttribute('data-kind') === 'vertex') {
+      const ng = toggleSmooth(graph, target.getAttribute('data-id')!);
+      if (ng !== graph) s.commit({ graph: ng });
+      return;
+    }
     if (target.getAttribute('data-kind') !== 'edge') return;
     const { g, vid } = splitEdge(graph, target.getAttribute('data-id')!, toPaper(toMM(e.clientX, e.clientY)));
     s.commit({ graph: g });
@@ -531,11 +629,14 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
       switch (e.key) {
         case 'Escape':
           setDraw({ start: null, hover: null });
+          setPen({ start: null, out: null, drag: null });
           st.select({});
           break;
         case 'Enter':
           setDraw({ start: null, hover: null });
+          setPen({ start: null, out: null, drag: null });
           break;
+        case 'p': case 'P': st.setTool('pen'); break;
         case 'Delete':
         case 'Backspace': {
           const { edges, vertices } = st.sel;
@@ -567,7 +668,8 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
     return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); };
   }, [compact]);
 
-  useEffect(() => { if (!isLineTool) setDraw({ start: null, hover: null }); }, [isLineTool]);
+  useEffect(() => { if (!isLineTool && !isPen) setDraw({ start: null, hover: null }); }, [isLineTool, isPen]);
+  useEffect(() => { if (!isPen) setPen({ start: null, out: null, drag: null }); }, [isPen]);
 
   // ---------- arte de fundo (congelada durante o arrasto para não recarregar imagens a cada frame) ----------
   const frozen = useRef({ dieline, bleedPolys });
@@ -590,7 +692,8 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
         if (len * v.scale < 46) return [];
         const panels = (dieline.edgeFaces[id] ?? []).filter((f) => !flaps.has(f));
         if (!panels.length) return [];
-        return [{ id, x: (A.x + B.x) / 2, y: (A.y + B.y) / 2, len, type: e.type }];
+        if (isCurved(e)) return [];
+      return [{ id, x: (A.x + B.x) / 2, y: (A.y + B.y) / 2, len, type: e.type }];
       })
     : [];
   const applyDim = () => {
@@ -622,6 +725,20 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
       return cos > -0.97; // ângulo menor que ~166° = canto
     });
   }, [graph, v.scale]);
+  // alças de curva: das arestas curvas que tocam pontos ou linhas selecionados
+  const ctrlHandles = useMemo(() => {
+    const anchors = new Set(s.sel.vertices);
+    for (const eid of s.sel.edges) { const ed = graph.e[eid]; if (ed) { anchors.add(ed.a); anchors.add(ed.b); } }
+    const out: { eid: string; end: 1 | 2; anchor: Vec2; pos: Vec2 }[] = [];
+    for (const eid in graph.e) {
+      const ed = graph.e[eid];
+      if (!isCurved(ed)) continue;
+      const both = s.sel.edges.includes(eid);
+      if (both || anchors.has(ed.a)) out.push({ eid, end: 1, anchor: [graph.v[ed.a].x, graph.v[ed.a].y], pos: ed.c1! });
+      if (both || anchors.has(ed.b)) out.push({ eid, end: 2, anchor: [graph.v[ed.b].x, graph.v[ed.b].y], pos: ed.c2! });
+    }
+    return out;
+  }, [graph, s.sel.vertices, s.sel.edges]);
   const gridStep = s.grid > 0 ? [1, 5, 10, 50, 100].map((k) => k * s.grid).find((g) => g * v.scale >= 10) : undefined;
   const cursor = space ? 'grab' : s.tool === 'text' ? 'text' : s.tool !== 'select' ? 'crosshair' : 'default';
 
@@ -717,13 +834,13 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
 
         <g transform={back ? 'scale(-1 1)' : undefined}>
         {Object.entries(graph.e).map(([id, e]) => {
-          const A = graph.v[e.a], B = graph.v[e.b];
+          const d = edgePath(graph, id);
           const visible = e.type === 'cut' ? s.layers.cut : s.layers.crease;
           const selected = selE.has(id);
           return (
             <g key={id}>
-              <line
-                x1={A.x} y1={A.y} x2={B.x} y2={B.y}
+              <path
+                d={d} fill="none"
                 stroke={selected ? '#F59E0B' : s.mode === 'art' ? '#CBD5E1' : e.type === 'cut' ? COLORS.cut : COLORS.crease}
                 strokeWidth={selected ? 2.5 : 1.25}
                 strokeDasharray={e.type === 'crease' ? '6 4' : undefined}
@@ -732,7 +849,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
                 pointerEvents="none"
               />
               {editable && s.tool === 'select' && (
-                <line data-kind="edge" data-id={id} x1={A.x} y1={A.y} x2={B.x} y2={B.y} stroke="transparent" strokeWidth={10 * px} style={{ cursor: 'move' }} />
+                <path data-kind="edge" data-id={id} d={d} fill="none" stroke="transparent" strokeWidth={10 * px} style={{ cursor: 'move' }} />
               )}
             </g>
           );
@@ -768,6 +885,17 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
           );
         })}
 
+        {editable && s.tool === 'select' && ctrlHandles.map((h) => (
+          <g key={`c-${h.eid}-${h.end}`}>
+            <line x1={h.anchor[0]} y1={h.anchor[1]} x2={h.pos[0]} y2={h.pos[1]} stroke="#3B82F6" strokeWidth={1} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+            <circle
+              data-kind="ctrl" data-id={`${h.eid}:${h.end}`} cx={h.pos[0]} cy={h.pos[1]} r={3.5 * px}
+              fill="white" stroke="#3B82F6" strokeWidth={1.5} vectorEffect="non-scaling-stroke" style={{ cursor: 'grab' }}
+            >
+              <title>Arraste a alça · Alt solta o lado oposto · Shift = 45°</title>
+            </circle>
+          </g>
+        ))}
         {editable && s.tool === 'select' &&
           [...new Set([...handles, ...s.sel.vertices])].filter((id) => graph.v[id]).map((id) => {
             const p = graph.v[id];
@@ -826,7 +954,30 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
         })()}
 
         <g transform={back ? 'scale(-1 1)' : undefined}>
-        {draw.start && draw.hover && (
+        {isPen && pen.start && (draw.hover || pen.drag) && (() => {
+          const end = act.current?.kind === 'pen' ? act.current.p : draw.hover!.p;
+          const c1 = pen.out ?? pen.start;
+          const c2: Vec2 = pen.drag ? [2 * end[0] - pen.drag[0], 2 * end[1] - pen.drag[1]] : end;
+          const pts = bezierPoints(pen.start, c1, c2, end, 32);
+          return <polyline points={pts.map((q) => q.join(',')).join(' ')} fill="none" stroke={COLORS.cut} strokeWidth={1.5} strokeDasharray="2 2" vectorEffect="non-scaling-stroke" pointerEvents="none" />;
+        })()}
+        {isPen && (pen.drag || pen.out) && (() => {
+          const at = act.current?.kind === 'pen' ? act.current.p : pen.start;
+          const h = pen.drag ?? pen.out;
+          if (!at || !h) return null;
+          const m: Vec2 = [2 * at[0] - h[0], 2 * at[1] - h[1]];
+          return (
+            <g pointerEvents="none">
+              <line x1={m[0]} y1={m[1]} x2={h[0]} y2={h[1]} stroke="#3B82F6" strokeWidth={1} vectorEffect="non-scaling-stroke" />
+              <circle cx={h[0]} cy={h[1]} r={3 * px} fill="white" stroke="#3B82F6" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+              <circle cx={m[0]} cy={m[1]} r={3 * px} fill="white" stroke="#3B82F6" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+            </g>
+          );
+        })()}
+        {isPen && draw.hover && (
+          <circle cx={draw.hover.p[0]} cy={draw.hover.p[1]} r={(draw.hover.kind === 'vertex' ? 6 : 4) * px} fill="none" stroke={draw.hover.kind === 'vertex' ? '#F59E0B' : '#64748B'} strokeWidth={1.5} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+        )}
+        {draw.start && draw.hover && isLineTool && (
           <line
             x1={draw.start[0]} y1={draw.start[1]} x2={draw.hover.p[0]} y2={draw.hover.p[1]}
             stroke={s.tool === 'cut' ? COLORS.cut : COLORS.crease}
@@ -899,6 +1050,11 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
         );
       })()}
 
+      {editable && isPen && (
+        <Text position="absolute" top={3} left="50%" transform="translateX(-50%)" fontSize="xs" bg="bg.panel" px={3} py={1} borderRadius="full" shadow="sm" color="gray.600">
+          Caneta: clique = canto · arraste = curva · Esc encerra
+        </Text>
+      )}
       {editable && isLineTool && (
         <Text position="absolute" top={3} left="50%" transform="translateX(-50%)" fontSize="xs" bg="bg.panel" px={3} py={1} borderRadius="full" shadow="sm" color="gray.600">
           Clique para desenhar {s.tool === 'cut' ? 'corte' : 'vinco'} · Shift = 45° · Esc/duplo clique encerra
@@ -922,4 +1078,49 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
       </Group>}
     </Box>
   );
+}
+
+/**
+ * Duplo clique num ponto: canto ↔ suave (como no Figma).
+ * Suave: as duas linhas de corte do ponto ganham alças alinhadas; canto: as alças do ponto recolhem.
+ */
+function toggleSmooth(g: Graph, vid: string): Graph {
+  const inc = Object.keys(g.e).filter((k) => (g.e[k].a === vid || g.e[k].b === vid) && g.e[k].type === 'cut');
+  if (!inc.length) return g;
+  const P: Vec2 = [g.v[vid].x, g.v[vid].y];
+  const keyAt = (k: string) => (g.e[k].a === vid ? 'c1' : 'c2') as 'c1' | 'c2';
+  const isSmooth = inc.some((k) => {
+    const h = g.e[k][keyAt(k)];
+    return isCurved(g.e[k]) && h && Math.hypot(h[0] - P[0], h[1] - P[1]) > 1e-6;
+  });
+  const e = { ...g.e };
+  if (isSmooth) {
+    // canto: recolhe as alças deste ponto; curva que ficou sem alças vira reta
+    for (const k of inc) {
+      if (!isCurved(e[k])) continue;
+      const ed = { ...e[k], [keyAt(k)]: P };
+      const other = ed[keyAt(k) === 'c1' ? 'c2' : 'c1']!;
+      const O = g.v[keyAt(k) === 'c1' ? ed.b : ed.a];
+      if (Math.hypot(other[0] - O.x, other[1] - O.y) < 1e-6) { delete ed.c1; delete ed.c2; }
+      e[k] = ed;
+    }
+    return { ...g, e };
+  }
+  if (inc.length !== 2) return g;
+  // suave: alças na direção que liga os dois vizinhos, com 1/3 do comprimento de cada linha
+  const far = (k: string): Vec2 => { const o = g.v[g.e[k].a === vid ? g.e[k].b : g.e[k].a]; return [o.x, o.y]; };
+  const [n0, n1] = inc.map(far);
+  let t: Vec2 = [n1[0] - n0[0], n1[1] - n0[1]];
+  const lt = Math.hypot(...t) || 1;
+  t = [t[0] / lt, t[1] / lt];
+  inc.forEach((k, i) => {
+    const ed = { ...e[k] };
+    const A: Vec2 = [g.v[ed.a].x, g.v[ed.a].y], B: Vec2 = [g.v[ed.b].x, g.v[ed.b].y];
+    if (!isCurved(ed)) [ed.c1, ed.c2] = straightHandles(A, B);
+    const L = Math.hypot(B[0] - A[0], B[1] - A[1]) / 3;
+    const sign = i === 0 ? -1 : 1; // para o lado do vizinho
+    ed[keyAt(k)] = [P[0] + sign * t[0] * L, P[1] + sign * t[1] * L];
+    e[k] = ed;
+  });
+  return { ...g, e };
 }

@@ -1,7 +1,9 @@
+import { isCurved, nearestT, splitBezier } from './curve';
 import type { Vec2 } from './types';
 
 /**
- * O molde é um grafo planar: vértices + arestas retas de corte ou vinco.
+ * O molde é um grafo planar: vértices + arestas de corte ou vinco. Vincos são sempre retos;
+ * cortes podem ser curvas Bézier (alças c1/c2).
  * Faces, árvore de dobras e sangria são todas derivadas dele (ver faces.ts).
  */
 export type EdgeType = 'cut' | 'crease';
@@ -15,6 +17,9 @@ export interface Edge {
   angle: number;
   /** Etapa de montagem definida pelo usuário (vinco); undefined = automática. */
   step?: number;
+  /** Curva Bézier (só corte): alça que sai de `a` e alça que chega em `b`, em coordenadas absolutas. */
+  c1?: Vec2;
+  c2?: Vec2;
 }
 export interface Graph {
   v: Record<string, Vertex>;
@@ -22,7 +27,7 @@ export interface Graph {
   next: number;
 }
 
-export interface Seg { a: Vec2; b: Vec2; type: EdgeType; angle?: number; step?: number }
+export interface Seg { a: Vec2; b: Vec2; type: EdgeType; angle?: number; step?: number; c1?: Vec2; c2?: Vec2 }
 
 export const DEFAULT_ANGLE = 90;
 const idNum = (id: string) => +id.slice(1);
@@ -48,7 +53,7 @@ export function graphFromSegments(segs: Seg[], tol = 0.01): Graph {
     const a = newId(g, 'v'), b = newId(g, 'v');
     g.v[a] = { x: s.a[0], y: s.a[1] };
     g.v[b] = { x: s.b[0], y: s.b[1] };
-    g.e[newId(g, 'e')] = { a, b, type: s.type, angle: s.angle ?? DEFAULT_ANGLE, ...(s.step ? { step: s.step } : {}) };
+    g.e[newId(g, 'e')] = { a, b, type: s.type, angle: s.angle ?? DEFAULT_ANGLE, ...(s.step ? { step: s.step } : {}), ...(s.c1 && s.c2 && s.type === 'cut' ? { c1: s.c1, c2: s.c2 } : {}) };
   }
   return normalize(g, tol);
 }
@@ -60,7 +65,7 @@ export function addSegments(g0: Graph, segs: Seg[], tol = 0.01): Graph {
     const a = newId(g, 'v'), b = newId(g, 'v');
     g.v[a] = { x: s.a[0], y: s.a[1] };
     g.v[b] = { x: s.b[0], y: s.b[1] };
-    g.e[newId(g, 'e')] = { a, b, type: s.type, angle: s.angle ?? DEFAULT_ANGLE, ...(s.step ? { step: s.step } : {}) };
+    g.e[newId(g, 'e')] = { a, b, type: s.type, angle: s.angle ?? DEFAULT_ANGLE, ...(s.step ? { step: s.step } : {}), ...(s.c1 && s.c2 && s.type === 'cut' ? { c1: s.c1, c2: s.c2 } : {}) };
   }
   return normalize(g, tol);
 }
@@ -116,6 +121,7 @@ export function normalize(g0: Graph, tol = 0.01, pass = 0): Graph {
 
   // vértice sobre o interior de uma aresta (junção em T / sobreposição colinear)
   for (const eid of eids) {
+    if (isCurved(g.e[eid])) continue;
     const e = g.e[eid], A = g.v[e.a], B = g.v[e.b], bb = boxes.get(eid)!;
     const dx = B.x - A.x, dy = B.y - A.y, len2 = dx * dx + dy * dy;
     for (const vid in g.v) {
@@ -131,7 +137,9 @@ export function normalize(g0: Graph, tol = 0.01, pass = 0): Graph {
   // cruzamentos próprios
   for (let i = 0; i < eids.length; i++) {
     const e1 = g.e[eids[i]], b1 = boxes.get(eids[i])!;
+    if (isCurved(e1)) continue;
     for (let j = i + 1; j < eids.length; j++) {
+      if (isCurved(g.e[eids[j]])) continue;
       const b2 = boxes.get(eids[j])!;
       if (b1[2] < b2[0] || b2[2] < b1[0] || b1[3] < b2[1] || b2[3] < b1[1]) continue;
       const e2 = g.e[eids[j]];
@@ -164,6 +172,7 @@ export function normalize(g0: Graph, tol = 0.01, pass = 0): Graph {
   for (const eid of Object.keys(g.e).sort(byId)) {
     const e = g.e[eid];
     if (e.a === e.b) { delete g.e[eid]; continue; }
+    if (isCurved(e)) continue; // curva e reta entre os mesmos pontos não são duplicadas
     const key = e.a < e.b ? `${e.a}|${e.b}` : `${e.b}|${e.a}`;
     const prev = seen.get(key);
     if (!prev) { seen.set(key, eid); continue; }
@@ -195,14 +204,39 @@ function segIntersect(p: Vertex, p2: Vertex, q: Vertex, q2: Vertex): [number, nu
 
 export function moveVertices(g0: Graph, ids: string[], dx: number, dy: number, base: Graph): Graph {
   const g = { ...g0, v: { ...g0.v } };
+  const moved = new Set(ids);
   for (const id of ids) if (base.v[id]) g.v[id] = { x: base.v[id].x + dx, y: base.v[id].y + dy };
-  return g;
+  // as alças andam junto com o ponto a que pertencem
+  let e: Graph['e'] | undefined;
+  for (const id in base.e) {
+    const be = base.e[id];
+    if (!isCurved(be) || !g0.e[id] || (!moved.has(be.a) && !moved.has(be.b))) continue;
+    e ??= { ...g0.e };
+    e[id] = {
+      ...g0.e[id],
+      c1: moved.has(be.a) ? [be.c1![0] + dx, be.c1![1] + dy] : g0.e[id].c1,
+      c2: moved.has(be.b) ? [be.c2![0] + dx, be.c2![1] + dy] : g0.e[id].c2,
+    };
+  }
+  return e ? { ...g, e } : g;
 }
 
 /** Insere um vértice no meio de uma aresta (ponto mais próximo de p). */
 export function splitEdge(g0: Graph, eid: string, p: Vec2): { g: Graph; vid: string } {
   const g = cloneGraph(g0);
   const e = g.e[eid], A = g.v[e.a], B = g.v[e.b];
+  if (isCurved(e)) {
+    // curva: divide em duas curvas que desenham exatamente o mesmo traço
+    const a: Vec2 = [A.x, A.y], b: Vec2 = [B.x, B.y];
+    const t = Math.min(0.999, Math.max(0.001, nearestT(a, e.c1!, e.c2!, b, p)));
+    const [l, r] = splitBezier(a, e.c1!, e.c2!, b, t);
+    const vid = newId(g, 'v');
+    g.v[vid] = { x: l[3][0], y: l[3][1] };
+    const oldB = e.b;
+    g.e[eid] = { ...e, b: vid, c1: l[1], c2: l[2] };
+    g.e[newId(g, 'e')] = { a: vid, b: oldB, type: e.type, angle: e.angle, c1: r[1], c2: r[2] };
+    return { g, vid };
+  }
   const dx = B.x - A.x, dy = B.y - A.y;
   const t = Math.min(0.999, Math.max(0.001, ((p[0] - A.x) * dx + (p[1] - A.y) * dy) / (dx * dx + dy * dy)));
   const vid = newId(g, 'v');
@@ -232,7 +266,19 @@ export function deleteVertices(g0: Graph, ids: string[]): Graph {
       const [k1, k2] = inc;
       const o1 = g.e[k1].a === vid ? g.e[k1].b : g.e[k1].a;
       const o2 = g.e[k2].a === vid ? g.e[k2].b : g.e[k2].a;
-      g.e[k1] = { ...g.e[k1], a: o1, b: o2 };
+      // alça do lado de fora de cada trecho (se curvo); vira uma curva só
+      const outer = (k: string, o: string): Vec2 | undefined => (isCurved(g.e[k]) ? (g.e[k].a === o ? g.e[k].c1 : g.e[k].c2) : undefined);
+      // alonga as alças na proporção do trecho que some (desfaz exatamente uma divisão)
+      const len = (o: string) => Math.hypot(g.v[o].x - g.v[vid].x, g.v[o].y - g.v[vid].y) || 1;
+      const k = (len(o1) + len(o2));
+      const grow = (h: Vec2 | undefined, o: string): Vec2 | undefined =>
+        h && [g.v[o].x + (h[0] - g.v[o].x) * (k / len(o)), g.v[o].y + (h[1] - g.v[o].y) * (k / len(o))];
+      const h1 = grow(outer(k1, o1), o1), h2 = grow(outer(k2, o2), o2);
+      const { c1: _c1, c2: _c2, ...rest } = g.e[k1];
+      void _c1; void _c2;
+      g.e[k1] = h1 || h2
+        ? { ...rest, a: o1, b: o2, c1: h1 ?? [g.v[o1].x, g.v[o1].y], c2: h2 ?? [g.v[o2].x, g.v[o2].y] }
+        : { ...rest, a: o1, b: o2 };
       delete g.e[k2];
     } else for (const k of inc) delete g.e[k];
     delete g.v[vid];
@@ -252,6 +298,8 @@ export function scaleGraph(g0: Graph, sx: number, sy: number, origin: Vec2): Gra
     g.v[id].x = origin[0] + (g.v[id].x - origin[0]) * sx;
     g.v[id].y = origin[1] + (g.v[id].y - origin[1]) * sy;
   }
+  const S = (q: Vec2): Vec2 => [origin[0] + (q[0] - origin[0]) * sx, origin[1] + (q[1] - origin[1]) * sy];
+  for (const id in g.e) if (isCurved(g.e[id])) g.e[id] = { ...g.e[id], c1: S(g.e[id].c1!), c2: S(g.e[id].c2!) };
   return g;
 }
 
@@ -285,7 +333,7 @@ export function axisOf(dx: number, dy: number): 'x' | 'y' | null {
 
 export function setEdgeLength(g0: Graph, eid: string, length: number): Graph {
   const e = g0.e[eid];
-  if (!e || length <= 0) return g0;
+  if (!e || length <= 0 || isCurved(e)) return g0;
   const g = cloneGraph(g0);
   const A = g.v[e.a], B = g.v[e.b];
   const dx = B.x - A.x, dy = B.y - A.y, len = Math.hypot(dx, dy);
