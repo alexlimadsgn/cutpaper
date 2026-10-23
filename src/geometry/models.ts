@@ -1,4 +1,5 @@
 import { arcPts, circle, cpt, deg, glueStrip, rect, solveAngle, tab, withOrder, type CPt, type TFace } from './templates';
+import { bezier, splitBezier } from './curve';
 import type { BoxParams, Vec2 } from './types';
 
 /*
@@ -32,43 +33,40 @@ function roundRect(x: number, y: number, w: number, h: number, r: number): CPt[]
   ];
 }
 
-/** Curva do coração (t em radianos), com a ponta para baixo (Y do SVG). Largura 32, de −12 a 17. */
-const heartPt = (t: number): Vec2 => [
-  16 * Math.sin(t) ** 3,
-  -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t)),
-];
-
-/** Derivada da curva do coração (para as alças das curvas). */
-const heartD = (t: number): Vec2 => [
-  48 * Math.sin(t) ** 2 * Math.cos(t),
-  -(-13 * Math.sin(t) + 10 * Math.sin(2 * t) + 6 * Math.sin(3 * t) + 4 * Math.sin(4 * t)),
-];
-
-/**
- * Trecho da curva do coração de t0 a t1 em n curvas Bézier (Hermite → Bézier),
- * levado para o papel por `map`. O primeiro ponto não tem curva (liga-se ao anterior por reta).
+/*
+ * Coração gráfico (lóbulos redondos, recorte suave no topo, ponta embaixo) em 6 curvas Bézier,
+ * em coordenadas normalizadas: largura 1, altura 0,92, topo em y = 0.
  */
-function heartCurve(t0: number, t1: number, n: number, map: (p: Vec2) => Vec2, k: number): CPt[] {
-  const out: CPt[] = [];
-  const dt = (t1 - t0) / n;
-  for (let i = 0; i <= n; i++) {
-    const t = t0 + dt * i;
-    const p = map(heartPt(t));
-    if (!i) { out.push(cpt(p[0], p[1])); continue; }
-    const tp = t - dt, pp = map(heartPt(tp));
-    const d0 = heartD(tp), d1 = heartD(t);
-    out.push(cpt(p[0], p[1], [[pp[0] + (k * d0[0] * dt) / 3, pp[1] + (k * d0[1] * dt) / 3], [p[0] - (k * d1[0] * dt) / 3, p[1] - (k * d1[1] * dt) / 3]]));
-  }
-  return out;
+type Seg = [Vec2, Vec2, Vec2, Vec2];
+const HEART: Seg[] = [
+  [[0.5, 0.92], [0.18, 0.68], [0, 0.48], [0, 0.28]],
+  [[0, 0.28], [0, 0.12], [0.12, 0], [0.27, 0]],
+  [[0.27, 0], [0.38, 0], [0.46, 0.06], [0.5, 0.16]],
+  [[0.5, 0.16], [0.54, 0.06], [0.62, 0], [0.73, 0]],
+  [[0.73, 0], [0.88, 0], [1, 0.12], [1, 0.28]],
+  [[1, 0.28], [1, 0.48], [0.82, 0.68], [0.5, 0.92]],
+];
+const HEART_H = 0.92;
+
+/** Segmentos do coração de largura w com o topo centrado em (cx, top). */
+const heartSegs = (cx: number, top: number, w: number): Seg[] =>
+  HEART.map((sg) => sg.map(([x, y]) => [cx + (x - 0.5) * w, top + y * w] as Vec2) as Seg);
+
+/** Contorno fechado a partir de segmentos: cada ponto chega pela curva do segmento que termina nele. */
+const ringOf = (segs: Seg[]): CPt[] => segs.map((sg) => cpt(sg[3][0], sg[3][1], [sg[1], sg[2]]));
+
+/** Coração inteiro de largura w centrado em (cx, cy). */
+function heart(cx: number, cy: number, w: number): CPt[] {
+  return ringOf(heartSegs(cx, cy - (HEART_H * w) / 2, w));
 }
 
-/** Coração inteiro (16 curvas) de largura w centrado em (cx, cy). */
-function heart(cx: number, cy: number, w: number): CPt[] {
-  const k = w / 32;
-  const pts = heartCurve(0, 2 * Math.PI, 16, ([x, y]) => [cx + k * x, cy + k * (y - 2.5)], k);
-  const last = pts.pop()!; // a última curva volta ao primeiro ponto
-  pts[0] = cpt(pts[0][0], pts[0][1], last.c);
-  return pts;
+/** Parâmetro t em que a coordenada y do segmento vale `y` (o trecho é monótono em y). */
+function tAtY(sg: Seg, y: number): number {
+  const Y = (t: number) => bezier(sg[0], sg[1], sg[2], sg[3], t)[1];
+  let lo = 0, hi = 1;
+  const up = Y(1) > Y(0);
+  for (let i = 0; i < 50; i++) { const m = (lo + hi) / 2; if ((Y(m) < y) === up) lo = m; else hi = m; }
+  return (lo + hi) / 2;
 }
 
 interface Body { W: number; D: number; H: number; G: number; x: number[] }
@@ -280,19 +278,32 @@ export function coracaoBox(p: BoxParams): TFace[] {
   const r = Math.min(3, L / 4);
   const lid = (x0: number): Vec2[] => [[x0, 0], [x0 + W, 0], [x0 + W, -L + r], ...arc([x0 + W - r, -L + r], r, 0, -Math.PI / 2), ...arc([x0 + r, -L + r], r, -Math.PI / 2, -Math.PI)];
 
-  // coração em pé: a parte de baixo é cortada numa reta (o vinco), na largura do "pescoço"
-  const hw = Math.min(W * 0.55, D * 0.9);
-  const k = hw / 32;
-  const yc = 9; // altura do corte na curva do coração (de −12 a 17)
-  let tc = Math.PI / 2;
-  for (let lo = Math.PI / 2, hi = Math.PI, i = 0; i < 40; i++) { tc = (lo + hi) / 2; if (heartPt(tc)[1] < yc) lo = tc; else hi = tc; }
+  // coração em pé: a parte de baixo é cortada numa reta (o vinco), onde o "pescoço" tem ~28% da largura
+  const hw = Math.min(W * 0.66, D * 0.95);
+  const neckY = (() => {
+    // altura (normalizada) em que a largura do coração vale 0,28
+    const seg = HEART[0];
+    let lo = 0.5, hi = HEART_H;
+    for (let i = 0; i < 40; i++) {
+      const m = (lo + hi) / 2;
+      const x = bezier(...seg, tAtY(seg, m))[0];
+      if (1 - 2 * x > 0.28) lo = m; else hi = m;
+    }
+    return lo;
+  })();
   const heartFlap = (cx: number, id: string, parent: string): TFace => {
-    const pts = heartCurve(-tc, tc, 12, ([hx, hy]) => [cx + k * hx, -L + k * (hy - yc)], k);
-    const neck = k * heartPt(tc)[0];
-    const inner = heart(cx, -L + k * (-1.5 - yc), hw * 0.42);
+    const top = -L - neckY * hw;
+    const segs = heartSegs(cx, top, hw);
+    const yc = -L;
+    // primeiro e último trechos (que descem até a ponta) são cortados na linha do vinco
+    const [, a] = splitBezier(...segs[0], tAtY(segs[0], yc));
+    const [b2] = splitBezier(...segs[5], tAtY(segs[5], yc));
+    const parts: Seg[] = [a, ...segs.slice(1, 5), b2];
+    const pts: CPt[] = [cpt(a[0][0], a[0][1]), ...parts.map((sg) => cpt(sg[3][0], sg[3][1], [sg[1], sg[2]]))];
+    const inner = heart(cx, top + hw * 0.16 + (HEART_H * hw * 0.52) / 2, hw * 0.52);
     return {
       id, name: id === 'coracao-f' ? 'Coração frente' : 'Coração traseira', parent, angle: -90,
-      hinge: [[cx + neck, -L], [cx - neck, -L]], poly: pts, holes: [inner], label: [cx, -L - k * 2],
+      hinge: [[b2[3][0], yc], [a[0][0], yc]], poly: pts, holes: [inner], label: [cx, top + hw * 0.66],
     };
   };
   const Ht = W - 2; // triângulo deita sobre a tampa, quase até o outro lado
@@ -317,7 +328,7 @@ export function coracaoBox(p: BoxParams): TFace[] {
   for (const id of ['frente', 'traseira']) {
     const f = faces.find((q) => q.id === id)!;
     const x0 = f.poly[0][0];
-    f.holes = [heart(x0 + W / 2, H / 2, Math.min(W, H) * 0.55)];
+    f.holes = [heart(x0 + W / 2, H / 2, Math.min(W, H) * 0.7)];
     f.label = [x0 + W * 0.08, H * 0.08];
   }
   return withOrder(faces, {
