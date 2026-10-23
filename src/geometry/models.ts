@@ -242,6 +242,8 @@ export function halfCandy(p: BoxParams): TFace[] {
   }
   return withOrder(faces, {
     'aba-cola': 1, 'lat-dir': 2, traseira: 2, 'lat-esq': 2, 'fundo-dir': 3, 'fundo-esq': 3, 'fundo-tras': 4, 'fundo-frente': 5,
+    // as faixas de cima formam um anel junto com as paredes: dobram na mesma etapa
+    'faixa-*': 2, 'gargalo-*': 2,
   });
 }
 

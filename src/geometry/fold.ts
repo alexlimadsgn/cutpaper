@@ -51,8 +51,8 @@ export function foldMatrices(faces: Face[], t: number) {
  * O caminho da montagem é resolvido uma vez, em pequenos passos que partem do anterior
  * (movimento contínuo, sem tremer), e cada quadro interpola entre os dois passos vizinhos.
  */
-const SAMPLES = 400;
-const pathCache = new WeakMap<Face[], { free: string[]; solved: Map<string, number>[] }>();
+const SAMPLES = 100;
+const pathCache = new WeakMap<Face[], { free: string[]; solved: Map<string, number>[]; plain?: boolean }>();
 
 export function foldMatricesLinked(faces: Face[], links: Dieline['links'], t: number) {
   if (!links.length || t >= 1 || t <= 0) return foldMatrices(faces, t);
@@ -65,9 +65,14 @@ export function foldMatricesLinked(faces: Face[], links: Dieline['links'], t: nu
     // peças marcadas como fole no molde; sem marcação, as duas pontas de cada ligação
     const marked = faces.filter((f) => f.flex).map((f) => f.id);
     const free = new Set<string>(marked.length ? marked : links.flatMap((l) => [l.a, l.b]));
-    cache = { free: [...free], solved: [new Map(faces.map((f) => [f.id, 0]))] };
+    // se a dobra normal já mantém as ligações fechadas (ex.: faixas da meia bala), não há o que ajustar
+    const gap = (m: Map<string, THREE.Matrix4>) => Math.max(...links.flatMap((l) => [l.p, l.q].map((q) =>
+      new THREE.Vector3(q[0], q[1], 0).applyMatrix4(m.get(l.a)!).distanceTo(new THREE.Vector3(q[0], q[1], 0).applyMatrix4(m.get(l.b)!)))));
+    const plain = [0.15, 0.35, 0.5, 0.65, 0.85].every((tt) => gap(foldMatrices(faces, tt)) < 0.05);
+    cache = { free: [...free], solved: [new Map(faces.map((f) => [f.id, 0]))], plain };
     pathCache.set(faces, cache);
   }
+  if (cache.plain) return foldMatrices(faces, t);
   const { free, solved } = cache;
   const live = faces.map((f) => ({ ...f, step: undefined as number | undefined }));
   const matsFor = (ang: Map<string, number>) => { for (const f of live) f.angle = ang.get(f.id); return foldMatrices(live, 1); };
@@ -95,8 +100,10 @@ export function foldMatricesLinked(faces: Face[], links: Dieline['links'], t: nu
       return r;
     };
     const n = free.length;
-    for (let it = 0; it < 40; it++) {
+    for (let it = 0; it < 12; it++) {
       const r0 = residual();
+      // já fechado (o passo anterior quase sempre deixa perto): para aqui
+      if (r0.reduce((sum, x) => sum + x * x, 0) < 1e-6) break;
       const J: number[][] = [];
       for (const id of free) {
         const old = ang.get(id)!;
@@ -131,9 +138,9 @@ export function foldMatricesLinked(faces: Face[], links: Dieline['links'], t: nu
     // perto das dobras de 180° o Gauss-Newton fica mal condicionado: acabamento por coordenadas
     const cost = () => residual().reduce((sum, x) => sum + x * x, 0);
     let best = cost();
-    if (best > 1e-3)
-      for (let step = 1; step > 1e-3; step /= 2)
-        for (let round = 0, improved = true; improved && round < 25; round++) {
+    if (best > 0.01)
+      for (let step = 0.5; step > 2e-3; step /= 2)
+        for (let round = 0, improved = true; improved && round < 6; round++) {
           improved = false;
           for (const id of free)
             for (const dd of [step, -step]) {
