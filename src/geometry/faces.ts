@@ -226,6 +226,7 @@ export function deriveDieline(g0: Graph, names: Record<string, string> = {}, roo
         child.hinge = [[g.v[e.a].x, g.v[e.a].y], [g.v[e.b].x, g.v[e.b].y]];
         child.angle = e.angle;
         if (e.step) { child.step = e.step; child.stepManual = true; }
+        if (e.flex) child.flex = true;
         q.push(n.to);
       }
     }
@@ -239,7 +240,7 @@ export function deriveDieline(g0: Graph, names: Record<string, string> = {}, roo
     .sort((a, b) => a.key - b.key)
     .map(({ f }, i): Face => ({
       id: f.id, name: names[f.id] ?? `Face ${i + 1}`, poly: f.poly, holes: f.holes, area: f.area,
-      parent: f.parent, hinge: f.hinge, angle: f.angle, step: f.step, stepManual: f.stepManual,
+      parent: f.parent, hinge: f.hinge, angle: f.angle, step: f.step, stepManual: f.stepManual, flex: f.flex,
     }));
   assignSteps(list);
 

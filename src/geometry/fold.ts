@@ -57,16 +57,13 @@ const pathCache = new WeakMap<Face[], { free: string[]; solved: Map<string, numb
 export function foldMatricesLinked(faces: Face[], links: Dieline['links'], t: number) {
   if (!links.length || t >= 1 || t <= 0) return foldMatrices(faces, t);
   const steps = stepCount(faces);
-  const byId = new Map(faces.map((f) => [f.id, f]));
   let cache = pathCache.get(faces);
   if (!cache) {
-    const chainOf = (id: string) => { const out: string[] = []; for (let f = byId.get(id); f; f = f.parent ? byId.get(f.parent) : undefined) out.push(f.id); return out; };
-    const free = new Set<string>();
-    for (const l of links) {
-      const ca = chainOf(l.a), cb = chainOf(l.b);
-      const common = ca.find((x) => cb.includes(x));
-      for (const c of [ca, cb]) for (const id of c) { if (id === common) break; free.add(id); }
-    }
+    // só as duas peças de cada ligação se ajustam (fole e cantos); paredes e telhados seguem a própria
+    // dobra — senão o ajuste entortaria o corpo da caixa para fechar o vinco
+    // peças marcadas como fole no molde; sem marcação, as duas pontas de cada ligação
+    const marked = faces.filter((f) => f.flex).map((f) => f.id);
+    const free = new Set<string>(marked.length ? marked : links.flatMap((l) => [l.a, l.b]));
     cache = { free: [...free], solved: [new Map(faces.map((f) => [f.id, 0]))] };
     pathCache.set(faces, cache);
   }

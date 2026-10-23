@@ -20,6 +20,8 @@ export interface Edge {
   /** Curva Bézier (só corte): alça que sai de `a` e alça que chega em `b`, em coordenadas absolutas. */
   c1?: Vec2;
   c2?: Vec2;
+  /** Vinco de fole: na animação da montagem o ângulo se ajusta para as peças ligadas não se abrirem. */
+  flex?: boolean;
 }
 export interface Graph {
   v: Record<string, Vertex>;
@@ -27,7 +29,7 @@ export interface Graph {
   next: number;
 }
 
-export interface Seg { a: Vec2; b: Vec2; type: EdgeType; angle?: number; step?: number; c1?: Vec2; c2?: Vec2 }
+export interface Seg { a: Vec2; b: Vec2; type: EdgeType; angle?: number; step?: number; c1?: Vec2; c2?: Vec2; flex?: boolean }
 
 export const DEFAULT_ANGLE = 90;
 const idNum = (id: string) => +id.slice(1);
@@ -53,7 +55,7 @@ export function graphFromSegments(segs: Seg[], tol = 0.01): Graph {
     const a = newId(g, 'v'), b = newId(g, 'v');
     g.v[a] = { x: s.a[0], y: s.a[1] };
     g.v[b] = { x: s.b[0], y: s.b[1] };
-    g.e[newId(g, 'e')] = { a, b, type: s.type, angle: s.angle ?? DEFAULT_ANGLE, ...(s.step ? { step: s.step } : {}), ...(s.c1 && s.c2 && s.type === 'cut' ? { c1: s.c1, c2: s.c2 } : {}) };
+    g.e[newId(g, 'e')] = { a, b, type: s.type, angle: s.angle ?? DEFAULT_ANGLE, ...(s.step ? { step: s.step } : {}), ...(s.c1 && s.c2 && s.type === 'cut' ? { c1: s.c1, c2: s.c2 } : {}), ...(s.flex ? { flex: true } : {}) };
   }
   return normalize(g, tol);
 }
@@ -65,7 +67,7 @@ export function addSegments(g0: Graph, segs: Seg[], tol = 0.01): Graph {
     const a = newId(g, 'v'), b = newId(g, 'v');
     g.v[a] = { x: s.a[0], y: s.a[1] };
     g.v[b] = { x: s.b[0], y: s.b[1] };
-    g.e[newId(g, 'e')] = { a, b, type: s.type, angle: s.angle ?? DEFAULT_ANGLE, ...(s.step ? { step: s.step } : {}), ...(s.c1 && s.c2 && s.type === 'cut' ? { c1: s.c1, c2: s.c2 } : {}) };
+    g.e[newId(g, 'e')] = { a, b, type: s.type, angle: s.angle ?? DEFAULT_ANGLE, ...(s.step ? { step: s.step } : {}), ...(s.c1 && s.c2 && s.type === 'cut' ? { c1: s.c1, c2: s.c2 } : {}), ...(s.flex ? { flex: true } : {}) };
   }
   return normalize(g, tol);
 }
@@ -180,6 +182,7 @@ export function normalize(g0: Graph, tol = 0.01, pass = 0): Graph {
       g.e[prev].type = 'crease';
       g.e[prev].angle = e.angle;
       if (e.step) g.e[prev].step = e.step;
+      if (e.flex) g.e[prev].flex = true;
     }
     delete g.e[eid];
   }

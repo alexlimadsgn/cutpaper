@@ -18,6 +18,8 @@ export interface Face {
   step?: number;
   /** A etapa foi definida pelo usuário no vinco (senão é automática). */
   stepManual?: boolean;
+  /** Dobradiça de fole (ver Edge.flex). */
+  flex?: boolean;
 }
 
 export interface Dieline {

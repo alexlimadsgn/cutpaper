@@ -127,21 +127,21 @@ export function milkBox(p: BoxParams): TFace[] {
     handle('alca-f', x[1], W, -R, T, 'telhado-f', -alpha),
     handle('alca-t', x[3], W, -R, T, 'telhado-t', -alpha),
     // fole da lateral esquerda
-    { id: 'fole-esq', name: 'Fole esq.', poly: [[0, 0], [D, 0], [m1, -R]], parent: 'lat-esq', hinge: [[0, 0], [D, 0]], angle: alpha },
+    { flex: true, id: 'fole-esq', name: 'Fole esq.', poly: [[0, 0], [D, 0], [m1, -R]], parent: 'lat-esq', hinge: [[0, 0], [D, 0]], angle: alpha },
     {
-      id: 'canto-esq-d', name: 'Canto esq. 2', poly: [[m1, -R], [D, 0], [D, -R]], parent: 'telhado-f', hinge: [[D, 0], [D, -R]], angle: 180,
+      flex: true, id: 'canto-esq-d', name: 'Canto esq. 2', poly: [[m1, -R], [D, 0], [D, -R]], parent: 'telhado-f', hinge: [[D, 0], [D, -R]], angle: 180,
       links: [{ other: 'fole-esq', a: [D, 0], b: [m1, -R] }],
     },
-    { id: 'canto-esq-e', name: 'Canto esq. 1', poly: [[0, 0], [m1, -R], [0, -R]], parent: 'fole-esq', hinge: [[0, 0], [m1, -R]], angle: 180 },
+    { flex: true, id: 'canto-esq-e', name: 'Canto esq. 1', poly: [[0, 0], [m1, -R], [0, -R]], parent: 'fole-esq', hinge: [[0, 0], [m1, -R]], angle: 180 },
     { id: 'cola-alta', name: 'Aba de cola alta', poly: [[0, 0], [0, -R], [-G, -R + g], [-G, -g]], parent: 'canto-esq-e', hinge: [[0, 0], [0, -R]], angle: 180 },
     // fole da lateral direita
-    { id: 'fole-dir', name: 'Fole dir.', poly: [[x[2], 0], [x[3], 0], [m3, -R]], parent: 'lat-dir', hinge: [[x[2], 0], [x[3], 0]], angle: alpha },
+    { flex: true, id: 'fole-dir', name: 'Fole dir.', poly: [[x[2], 0], [x[3], 0], [m3, -R]], parent: 'lat-dir', hinge: [[x[2], 0], [x[3], 0]], angle: alpha },
     {
-      id: 'canto-dir-e', name: 'Canto dir. 1', poly: [[x[2], 0], [m3, -R], [x[2], -R]], parent: 'telhado-f', hinge: [[x[2], 0], [x[2], -R]], angle: 180,
+      flex: true, id: 'canto-dir-e', name: 'Canto dir. 1', poly: [[x[2], 0], [m3, -R], [x[2], -R]], parent: 'telhado-f', hinge: [[x[2], 0], [x[2], -R]], angle: 180,
       links: [{ other: 'fole-dir', a: [x[2], 0], b: [m3, -R] }],
     },
     {
-      id: 'canto-dir-d', name: 'Canto dir. 2', poly: [[m3, -R], [x[3], 0], [x[3], -R]], parent: 'telhado-t', hinge: [[x[3], 0], [x[3], -R]], angle: 180,
+      flex: true, id: 'canto-dir-d', name: 'Canto dir. 2', poly: [[m3, -R], [x[3], 0], [x[3], -R]], parent: 'telhado-t', hinge: [[x[3], 0], [x[3], -R]], angle: 180,
       links: [{ other: 'fole-dir', a: [x[3], 0], b: [m3, -R] }],
     },
   );

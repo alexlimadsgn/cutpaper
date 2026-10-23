@@ -24,6 +24,8 @@ export interface TFace {
    * O ângulo é calculado da caixa montada, para a dobra fechar igual pelos dois caminhos.
    */
   links?: { other: string; a: Vec2; b: Vec2 }[];
+  /** Peça de fole: na animação os vincos dela se ajustam (ver Edge.flex). */
+  flex?: boolean;
 }
 
 export const rect = (x: number, y: number, w: number, h: number): Vec2[] => [
@@ -131,12 +133,12 @@ export function buildTemplate(faces: TFace[]): { graph: Graph; names: Record<str
   const segs: Seg[] = [];
   const ring = (poly: Vec2[]) => poly.forEach((a, i) => segs.push({ a, b: poly[(i + 1) % poly.length], type: 'cut' }));
   for (const f of faces) { ring(f.poly); f.holes?.forEach(ring); }
-  for (const f of faces) if (f.hinge) segs.push({ a: f.hinge[0], b: f.hinge[1], type: 'crease', angle: f.angle, step: f.step });
+  for (const f of faces) if (f.hinge) segs.push({ a: f.hinge[0], b: f.hinge[1], type: 'crease', angle: f.angle, step: f.step, flex: f.flex });
   if (faces.some((f) => f.links?.length)) {
     const mats = foldTFaces(faces);
     for (const f of faces)
       for (const l of f.links ?? [])
-        segs.push({ a: l.a, b: l.b, type: 'crease', angle: +linkAngle(mats, l.other, f, l.a, l.b).toFixed(2), step: f.step });
+        segs.push({ a: l.a, b: l.b, type: 'crease', angle: +linkAngle(mats, l.other, f, l.a, l.b).toFixed(2), step: f.step, flex: true });
   }
   const graph = graphFromSegments(segs);
   const labels = faces.map((f) => ({
