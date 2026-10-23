@@ -1,8 +1,9 @@
 import { Box, Button, Group, IconButton, Text } from '@chakra-ui/react';
+import { Magnet } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from 'react';
 import { center, createObject, imageRect, objectToSvg, toLocal, toWorld, type ArtObject, type ArtType } from '../art/objects';
 import { buildArt, COLORS, objectClip } from '../export/svg';
-import { sideArt } from '../store';
+import { selectedObjects, sideArt } from '../store';
 import { bezierPoints, distToEdge, edgePath, isCurved, straightHandles } from '../geometry/curve';
 import { faceAt, flapIds } from '../geometry/faces';
 import {
@@ -19,7 +20,7 @@ type Interaction =
   | { kind: 'drag'; ids: string[]; anchor: string; start: Vec2; base: Graph; moved: boolean }
   | { kind: 'pan'; client: Vec2; view: View }
   | { kind: 'marquee'; start: Vec2; cur: Vec2; additive: boolean; face?: string; moved: boolean }
-  | { kind: 'obj-move'; base: ArtObject; start: Vec2; moved: boolean }
+  | { kind: 'obj-move'; base: ArtObject; bases: ArtObject[]; start: Vec2; moved: boolean; collapse?: boolean }
   | { kind: 'obj-resize'; base: ArtObject; hx: number; hy: number; moved: boolean }
   | { kind: 'obj-rotate'; base: ArtObject; moved: boolean }
   | { kind: 'obj-pan'; base: ArtObject; start: Vec2; moved: boolean }
@@ -56,7 +57,10 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
   const artMode = s.mode === 'art' && !compact;
   const isLineTool = s.tool === 'cut' || s.tool === 'crease';
   const isPen = s.tool === 'pen';
-  const selObj = objects.find((o) => o.id === s.sel.object);
+  const selIds = selectedObjects(s.sel);
+  // alças de tamanho/rotação só com um objeto selecionado
+  const selObj = selIds.length === 1 ? objects.find((o) => o.id === selIds[0]) : undefined;
+  const selMany = selIds.length > 1 ? objects.filter((o) => selIds.includes(o.id)) : [];
   const wrapRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -69,6 +73,8 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
   const [creating, setCreating] = useState<{ type: ArtType; a: Vec2; b: Vec2 } | null>(null);
   const [space, setSpace] = useState(false);
   const [dragGuides, setDragGuides] = useState<[Vec2, Vec2][]>([]);
+  /** Guias de snap dos objetos (linhas verticais/horizontais). */
+  const [objGuides, setObjGuides] = useState<{ x?: number; y?: number }>({});
   /** Cota em edição: aresta e texto digitado. */
   const [editDim, setEditDim] = useState<{ id: string; value: string } | null>(null);
   const dimInput = useRef<HTMLInputElement>(null);
@@ -135,6 +141,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
   const snapGrid = (p: Vec2): Vec2 => (s.grid > 0 ? [Math.round(p[0] / s.grid) * s.grid, Math.round(p[1] / s.grid) * s.grid] : p);
 
   const snapPoint = (p: Vec2, exclude: Set<string> = new Set(), edges = true, from?: Vec2 | null): Snap => {
+    if (!s.snap) return { p, kind: 'free' };
     const r = SNAP_PX * px;
     let best: Snap | null = null, bd = r;
     for (const id in graph.v) {
@@ -180,25 +187,43 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
     return [from[0] + Math.cos(ang) * len, from[1] + Math.sin(ang) * len];
   };
 
-  /** Snap do objeto: centro e bordas das faces, senão grade. */
-  const snapObject = (o: ArtObject): Vec2 => {
-    const r = 6 * px;
-    const [cx, cy] = center(o);
-    let bx: number | undefined, by: number | undefined, dx = r, dy = r;
+  /** Linhas de snap dos objetos: pontos do molde, bordas e centros das faces e dos outros objetos. */
+  const snapLines = (exclude: string[]) => {
+    const xs: number[] = [], ys: number[] = [];
+    for (const id in graph.v) { xs.push(graph.v[id].x * mx); ys.push(graph.v[id].y); }
     for (const f of dieline.faces) {
-      const xs = f.poly.map((q) => q[0] * mx), ys = f.poly.map((q) => q[1]);
-      const fx = [Math.min(...xs), (Math.min(...xs) + Math.max(...xs)) / 2, Math.max(...xs)];
-      const fy = [Math.min(...ys), (Math.min(...ys) + Math.max(...ys)) / 2, Math.max(...ys)];
-      // alinha centro, borda esquerda/superior ou direita/inferior do objeto
-      for (const t of fx)
-        for (const [val, off] of [[cx, 0], [o.x, o.w / 2], [o.x + o.w, -o.w / 2]])
-          if (Math.abs(val - t) < dx) { dx = Math.abs(val - t); bx = t + off; }
-      for (const t of fy)
-        for (const [val, off] of [[cy, 0], [o.y, o.h / 2], [o.y + o.h, -o.h / 2]])
-          if (Math.abs(val - t) < dy) { dy = Math.abs(val - t); by = t + off; }
+      const fx = f.poly.map((q) => q[0] * mx), fy = f.poly.map((q) => q[1]);
+      const x0 = Math.min(...fx), x1 = Math.max(...fx), y0 = Math.min(...fy), y1 = Math.max(...fy);
+      xs.push(x0, (x0 + x1) / 2, x1); ys.push(y0, (y0 + y1) / 2, y1);
     }
+    for (const o of objects) {
+      if (exclude.includes(o.id) || o.hidden) continue;
+      const pts = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => toWorld(o, [(sx * o.w) / 2, (sy * o.h) / 2]));
+      const x0 = Math.min(...pts.map((q) => q[0])), x1 = Math.max(...pts.map((q) => q[0]));
+      const y0 = Math.min(...pts.map((q) => q[1])), y1 = Math.max(...pts.map((q) => q[1]));
+      xs.push(x0, (x0 + x1) / 2, x1); ys.push(y0, (y0 + y1) / 2, y1);
+    }
+    return { xs, ys };
+  };
+  /** Valor de `lines` mais perto de algum dos `vals` (até 6 px): devolve o deslocamento e a linha. */
+  const nearest = (vals: number[], lines: number[]) => {
+    let best: { d: number; at: number } | undefined;
+    for (const v of vals) for (const l of lines) {
+      const d = l - v;
+      if (Math.abs(d) <= 6 * px && (!best || Math.abs(d) < Math.abs(best.d))) best = { d, at: l };
+    }
+    return best;
+  };
+
+  /** Snap do objeto ao mover: bordas e centro encostam em pontos, faces e outros objetos; senão grade. */
+  const snapObject = (o: ArtObject, exclude: string[]): Vec2 => {
+    if (!s.snap) { setObjGuides({}); return [o.x, o.y]; }
+    const { xs, ys } = snapLines(exclude);
+    const sx = nearest([o.x, o.x + o.w / 2, o.x + o.w], xs);
+    const sy = nearest([o.y, o.y + o.h / 2, o.y + o.h], ys);
+    setObjGuides({ x: sx?.at, y: sy?.at });
     const g = snapGrid([o.x, o.y]);
-    return [bx !== undefined ? bx - o.w / 2 : g[0], by !== undefined ? by - o.h / 2 : g[1]];
+    return [sx ? o.x + sx.d : g[0], sy ? o.y + sy.d : g[1]];
   };
 
   /** Redimensiona pela alça (hx, hy ∈ {-1,0,1}) no referencial do objeto (respeita rotação). */
@@ -317,8 +342,19 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
       }
       if (kind === 'object' && id) {
         const o = objects.find((x) => x.id === id)!;
-        s.select({ object: id, face: o.clip });
-        act.current = { kind: 'obj-move', base: o, start: p, moved: false };
+        let ids = selIds;
+        if (e.shiftKey) {
+          // Shift: soma/tira da seleção
+          ids = ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
+          s.select(ids.length ? { object: ids.includes(id) ? id : ids[0], objects: ids } : {});
+          if (!ids.includes(id)) return;
+        } else if (!ids.includes(id)) {
+          ids = [id];
+          s.select({ object: id, face: o.clip });
+        }
+        // clique sem arrastar num objeto de uma seleção múltipla: fica só ele (como no Figma)
+        const collapse = !e.shiftKey && ids.length > 1;
+        act.current = { kind: 'obj-move', base: o, bases: objects.filter((x) => ids.includes(x.id)), start: p, moved: false, collapse };
         s.beginDrag();
         return;
       }
@@ -446,12 +482,23 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
       setCreating({ type: a.type, a: a.start, b: a.cur });
     } else if (a.kind === 'obj-move') {
       let nx = a.base.x + p[0] - a.start[0], ny = a.base.y + p[1] - a.start[1];
+      const ids = a.bases.map((o) => o.id);
       if (e.shiftKey) {
         if (Math.abs(nx - a.base.x) > Math.abs(ny - a.base.y)) ny = a.base.y;
         else nx = a.base.x;
-      } else [nx, ny] = snapObject({ ...a.base, x: nx, y: ny });
-      a.moved ||= Math.hypot(nx - a.base.x, ny - a.base.y) > 1e-6;
-      s.setObjectLive(a.base.id, { x: nx, y: ny });
+        setObjGuides({});
+      } else if (a.bases.length > 1) {
+        // vários: a caixa que envolve todos é que encosta
+        const x0 = Math.min(...a.bases.map((o) => o.x)), y0 = Math.min(...a.bases.map((o) => o.y));
+        const x1 = Math.max(...a.bases.map((o) => o.x + o.w)), y1 = Math.max(...a.bases.map((o) => o.y + o.h));
+        const dx = nx - a.base.x, dy = ny - a.base.y;
+        const box = { ...a.base, x: x0 + dx, y: y0 + dy, w: x1 - x0, h: y1 - y0 };
+        const [bx, by] = snapObject(box, ids);
+        nx = a.base.x + (bx - x0); ny = a.base.y + (by - y0);
+      } else [nx, ny] = snapObject({ ...a.base, x: nx, y: ny }, ids);
+      const dx = nx - a.base.x, dy = ny - a.base.y;
+      a.moved ||= Math.hypot(dx, dy) > 1e-6;
+      s.setObjectsLive(Object.fromEntries(a.bases.map((o) => [o.id, { x: o.x + dx, y: o.y + dy }])));
     } else if (a.kind === 'obj-pan') {
       // deslocamento no referencial da moldura (respeita a rotação)
       const r = (-a.base.rotation * Math.PI) / 180;
@@ -462,7 +509,15 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
       s.setObjectLive(a.base.id, { crop: { ...c, x: c.x + lx, y: c.y + ly } });
     } else if (a.kind === 'obj-resize') {
       a.moved = true;
-      s.setObjectLive(a.base.id, resizeBox(a.base, a.hx, a.hy, p, e.shiftKey));
+      let q = p;
+      if (s.snap && a.base.rotation % 360 === 0) {
+        // a borda que está sendo puxada encosta em pontos, bordas e centros
+        const { xs, ys } = snapLines([a.base.id]);
+        const sx = a.hx ? nearest([p[0]], xs) : undefined, sy = a.hy ? nearest([p[1]], ys) : undefined;
+        q = [sx ? sx.at : p[0], sy ? sy.at : p[1]];
+        setObjGuides({ x: sx?.at, y: sy?.at });
+      } else setObjGuides({});
+      s.setObjectLive(a.base.id, resizeBox(a.base, a.hx, a.hy, q, e.shiftKey));
     } else if (a.kind === 'obj-rotate') {
       const [cx, cy] = center(a.base);
       let deg = (Math.atan2(p[1] - cy, p[0] - cx) * 180) / Math.PI + 90;
@@ -475,7 +530,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
       const base = a.base.v[a.anchor];
       let target: Vec2 = [base.x + p[0] - a.start[0], base.y + p[1] - a.start[1]];
       if (e.shiftKey) target = Math.abs(target[0] - base.x) > Math.abs(target[1] - base.y) ? [target[0], base.y] : [base.x, target[1]];
-      else {
+      else if (s.snap) {
         const snap = snapPoint(target, new Set(a.ids), false);
         if (snap.kind === 'vertex') target = snap.p;
         else {
@@ -504,6 +559,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
     act.current = null;
     if (!a) return;
     setDragGuides([]);
+    setObjGuides({});
     if (a.kind === 'pen') {
       const pt = a.p;
       const drag = a.drag;
@@ -520,6 +576,7 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
       return;
     }
     if (a.kind === 'ctrl' || a.kind === 'bend') { s.endDrag(a.moved); return; }
+    if (a.kind === 'obj-move' && a.collapse && !a.moved) s.select({ object: a.base.id, face: a.base.clip });
     if (a.kind === 'drag' || a.kind === 'obj-move' || a.kind === 'obj-resize' || a.kind === 'obj-rotate' || a.kind === 'obj-pan') s.endDrag(a.moved);
     if (a.kind === 'obj-create') {
       setCreating(null);
@@ -532,7 +589,15 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
     }
     if (a.kind === 'marquee') {
       setMarquee(null);
-      if (!a.moved || !editable) return s.select(a.face ? { face: a.face } : {});
+      if (a.moved && artMode) {
+        // modo Arte: seleciona os objetos que o retângulo toca
+        const [x0, x1] = [Math.min(a.start[0], a.cur[0]), Math.max(a.start[0], a.cur[0])];
+        const [y0, y1] = [Math.min(a.start[1], a.cur[1]), Math.max(a.start[1], a.cur[1])];
+        const hit = objects.filter((o) => !o.hidden && o.x < x1 && o.x + o.w > x0 && o.y < y1 && o.y + o.h > y0).map((o) => o.id);
+        const ids = a.additive ? [...new Set([...selIds, ...hit])] : hit;
+        return s.select(ids.length ? { object: ids[0], objects: ids } : {});
+      }
+      if (!a.moved || !editable) return s.select(a.face ? { face: a.face } : (a.additive ? { object: s.sel.object, objects: s.sel.objects } : {}));
       const [x0, x1] = [Math.min(a.start[0], a.cur[0]), Math.max(a.start[0], a.cur[0])];
       const [y0, y1] = [Math.min(a.start[1], a.cur[1]), Math.max(a.start[1], a.cur[1])];
       const inside = Object.keys(graph.v).filter((id) => {
@@ -592,8 +657,10 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
         return st.setMode(st.mode === 'art' ? 'structure' : 'art');
       }
 
+      if (!mod && (e.key === 's' || e.key === 'S')) { st.toggleSnap(); return; }
       if (st.mode === 'art') {
         const o = st.doc.objects.find((x) => x.id === st.sel.object);
+        const many = selectedObjects(st.sel);
         if (mod && e.key.toLowerCase() === 'd' && o) { e.preventDefault(); return st.duplicateObject(o.id); }
         if (mod) return;
         switch (e.key) {
@@ -601,19 +668,18 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
             if (st.cropEdit) return st.setCropEdit(undefined);
             st.select({}); st.setTool('select'); return;
           case 'Enter': if (st.cropEdit) st.setCropEdit(undefined); return;
-          case 'Delete': case 'Backspace': if (o) st.deleteObject(o.id); return;
+          case 'Delete': case 'Backspace': if (many.length) st.deleteObjects(many); return;
           case 'v': case 'V': return st.setTool('select');
           case 'r': case 'R': return st.setTool('rect');
           case 'e': case 'E': return st.setTool('ellipse');
           case 't': case 'T': return st.setTool('text');
           case 'ArrowLeft': case 'ArrowRight': case 'ArrowUp': case 'ArrowDown': {
-            if (!o) return;
+            if (!many.length) return;
             e.preventDefault();
             const step = e.shiftKey ? 1 : 0.1;
-            st.updateObject(o.id, {
-              x: o.x + (e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0),
-              y: o.y + (e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0),
-            });
+            const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
+            const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
+            st.commit({ objects: st.doc.objects.map((x) => (many.includes(x.id) ? { ...x, x: x.x + dx, y: x.y + dy } : x)) });
             return;
           }
         }
@@ -944,6 +1010,19 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
             </g>
           );
         })()}
+        {artMode && selMany.map((o) => {
+          const [cx, cy] = center(o);
+          return (
+            <rect key={`sel-${o.id}`} x={o.x} y={o.y} width={o.w} height={o.h} transform={`rotate(${o.rotation} ${cx} ${cy})`}
+              fill="none" stroke="#3B82F6" strokeWidth={1.5} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+          );
+        })}
+        {objGuides.x !== undefined && (
+          <line x1={objGuides.x} y1={vb[1]} x2={objGuides.x} y2={vb[1] + vb[3]} stroke="#D946EF" strokeWidth={1} strokeDasharray="4 3" vectorEffect="non-scaling-stroke" pointerEvents="none" />
+        )}
+        {objGuides.y !== undefined && (
+          <line x1={vb[0]} y1={objGuides.y} x2={vb[0] + vb[2]} y2={objGuides.y} stroke="#D946EF" strokeWidth={1} strokeDasharray="4 3" vectorEffect="non-scaling-stroke" pointerEvents="none" />
+        )}
         {creating && (() => {
           const x = Math.min(creating.a[0], creating.b[0]), y = Math.min(creating.a[1], creating.b[1]);
           const w = Math.abs(creating.b[0] - creating.a[0]), h = Math.abs(creating.b[1] - creating.a[1]);
@@ -1076,6 +1155,16 @@ export function Editor2D({ compact = false }: { compact?: boolean }) {
         <Button size="xs" variant="outline" minW="52px" fontSize="11px" onClick={fit} title="Ajustar à tela">{Math.round(v.scale * 100 / 3.78)}%</Button>
         <IconButton size="xs" variant="outline" aria-label="Aumentar zoom" onClick={() => setView((c) => c && { ...c, scale: c.scale * 1.25 })}>+</IconButton>
       </Group>}
+      {!compact && (
+        <IconButton
+          position="absolute" bottom={3} left="150px" size="xs" variant={s.snap ? 'solid' : 'outline'} colorPalette={s.snap ? 'red' : 'gray'}
+          bg={s.snap ? undefined : 'bg.panel'} shadow="xs"
+          aria-label="Snap" title={s.snap ? 'Snap ligado: encaixa em pontos, linhas e centros (S desliga)' : 'Snap desligado (S liga)'}
+          onClick={s.toggleSnap} aria-pressed={s.snap}
+        >
+          <Magnet size={14} />
+        </IconButton>
+      )}
     </Box>
   );
 }

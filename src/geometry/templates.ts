@@ -131,7 +131,11 @@ export function lidBox(p: BoxParams): TFace[] {
 /** Converte os painéis do template no grafo editável (+ nomes das faces). */
 export function buildTemplate(faces: TFace[]): { graph: Graph; names: Record<string, string>; root?: string } {
   const segs: Seg[] = [];
-  const ring = (poly: Vec2[]) => poly.forEach((a, i) => segs.push({ a, b: poly[(i + 1) % poly.length], type: 'cut' }));
+  // pontos marcados com `c` chegam por uma curva Bézier (alças do trecho anterior → este ponto)
+  const ring = (poly: Vec2[]) => poly.forEach((a, i) => {
+    const b = poly[(i + 1) % poly.length] as CPt;
+    segs.push({ a: [a[0], a[1]], b: [b[0], b[1]], type: 'cut', ...(b.c ? { c1: b.c[0], c2: b.c[1] } : {}) });
+  });
   for (const f of faces) { ring(f.poly); f.holes?.forEach(ring); }
   for (const f of faces) if (f.hinge) segs.push({ a: f.hinge[0], b: f.hinge[1], type: 'crease', angle: f.angle, step: f.step, flex: f.flex });
   if (faces.some((f) => f.links?.length)) {
@@ -240,8 +244,34 @@ export const glueStrip = (x: number, y0: number, y1: number, G: number): Vec2[] 
   return [[x, y0], [x + G, y0 + c], [x + G, y1 - c], [x, y1]];
 };
 
-export const circle = (cx: number, cy: number, r: number, n = 20): Vec2[] =>
-  Array.from({ length: n }, (_, i) => [cx + r * Math.cos((i / n) * 2 * Math.PI), cy + r * Math.sin((i / n) * 2 * Math.PI)] as Vec2);
+/** Ponto de contorno que chega por uma curva: `c` = alças [saída do ponto anterior, chegada neste]. */
+export type CPt = Vec2 & { c?: [Vec2, Vec2] };
+export const cpt = (x: number, y: number, c?: [Vec2, Vec2]): CPt => Object.assign([x, y] as Vec2, c ? { c } : {});
+
+/**
+ * Arco de círculo como curvas Bézier (no máximo 90° por curva): o primeiro ponto é o início
+ * (ligado ao anterior por reta), os demais chegam por curva.
+ */
+export function arcPts(c: Vec2, r: number, from: number, to: number): CPt[] {
+  const n = Math.max(1, Math.ceil(Math.abs(to - from) / (Math.PI / 2) - 1e-9));
+  const d = (to - from) / n, k = (4 / 3) * Math.tan(d / 4) * r;
+  const P = (a: number): Vec2 => [c[0] + r * Math.cos(a), c[1] + r * Math.sin(a)];
+  const out: CPt[] = [cpt(...P(from))];
+  for (let i = 0; i < n; i++) {
+    const a0 = from + d * i, a1 = a0 + d;
+    const p0 = P(a0), p1 = P(a1);
+    out.push(cpt(p1[0], p1[1], [[p0[0] - k * Math.sin(a0), p0[1] + k * Math.cos(a0)], [p1[0] + k * Math.sin(a1), p1[1] - k * Math.cos(a1)]]));
+  }
+  return out;
+}
+
+/** Círculo fechado (4 curvas). */
+export const circle = (cx: number, cy: number, r: number): CPt[] => {
+  const pts = arcPts([cx, cy], r, 0, 2 * Math.PI);
+  const last = pts.pop()!; // volta ao início: a última curva fecha no primeiro ponto
+  pts[0] = cpt(pts[0][0], pts[0][1], last.c);
+  return pts;
+};
 
 /** Ordem de montagem por id de face: dobra o corpo, fecha o fundo e só então a tampa. */
 export const withOrder = (faces: TFace[], order: Record<string, number>) =>

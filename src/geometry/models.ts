@@ -1,4 +1,4 @@
-import { deg, glueStrip, rect, solveAngle, tab, withOrder, type TFace } from './templates';
+import { arcPts, circle, cpt, deg, glueStrip, rect, solveAngle, tab, withOrder, type CPt, type TFace } from './templates';
 import type { BoxParams, Vec2 } from './types';
 
 /*
@@ -17,16 +17,11 @@ function outTab(p0: Vec2, p1: Vec2, inside: Vec2, depth: number, inset: number):
 
 const mirrorX = (pts: Vec2[], x0: number): Vec2[] => pts.map(([x, y]) => [2 * x0 - x, y]);
 
-/** Arco de cantos arredondados: pontos de `from` até `to` em volta de `c`. */
-function arc(c: Vec2, r: number, from: number, to: number, n = 6): Vec2[] {
-  return Array.from({ length: n + 1 }, (_, i) => {
-    const t = from + ((to - from) * i) / n;
-    return [c[0] + r * Math.cos(t), c[1] + r * Math.sin(t)] as Vec2;
-  });
-}
+/** Arco (curvas Bézier de verdade) de `from` até `to` em volta de `c`. */
+const arc = (c: Vec2, r: number, from: number, to: number, _n?: number): CPt[] => arcPts(c, r, from, to);
 
 /** Retângulo de cantos arredondados (para furos e visores). */
-function roundRect(x: number, y: number, w: number, h: number, r: number): Vec2[] {
+function roundRect(x: number, y: number, w: number, h: number, r: number): CPt[] {
   r = Math.min(r, w / 2 - 0.1, h / 2 - 0.1);
   const P = Math.PI;
   return [
@@ -43,13 +38,37 @@ const heartPt = (t: number): Vec2 => [
   -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t)),
 ];
 
-/** Coração inteiro de largura w centrado em (cx, cy). */
-function heart(cx: number, cy: number, w: number, n = 48): Vec2[] {
+/** Derivada da curva do coração (para as alças das curvas). */
+const heartD = (t: number): Vec2 => [
+  48 * Math.sin(t) ** 2 * Math.cos(t),
+  -(-13 * Math.sin(t) + 10 * Math.sin(2 * t) + 6 * Math.sin(3 * t) + 4 * Math.sin(4 * t)),
+];
+
+/**
+ * Trecho da curva do coração de t0 a t1 em n curvas Bézier (Hermite → Bézier),
+ * levado para o papel por `map`. O primeiro ponto não tem curva (liga-se ao anterior por reta).
+ */
+function heartCurve(t0: number, t1: number, n: number, map: (p: Vec2) => Vec2, k: number): CPt[] {
+  const out: CPt[] = [];
+  const dt = (t1 - t0) / n;
+  for (let i = 0; i <= n; i++) {
+    const t = t0 + dt * i;
+    const p = map(heartPt(t));
+    if (!i) { out.push(cpt(p[0], p[1])); continue; }
+    const tp = t - dt, pp = map(heartPt(tp));
+    const d0 = heartD(tp), d1 = heartD(t);
+    out.push(cpt(p[0], p[1], [[pp[0] + (k * d0[0] * dt) / 3, pp[1] + (k * d0[1] * dt) / 3], [p[0] - (k * d1[0] * dt) / 3, p[1] - (k * d1[1] * dt) / 3]]));
+  }
+  return out;
+}
+
+/** Coração inteiro (16 curvas) de largura w centrado em (cx, cy). */
+function heart(cx: number, cy: number, w: number): CPt[] {
   const k = w / 32;
-  return Array.from({ length: n }, (_, i) => {
-    const [x, y] = heartPt((i / n) * 2 * Math.PI);
-    return [cx + k * x, cy + k * (y - 2.5)] as Vec2;
-  });
+  const pts = heartCurve(0, 2 * Math.PI, 16, ([x, y]) => [cx + k * x, cy + k * (y - 2.5)], k);
+  const last = pts.pop()!; // a última curva volta ao primeiro ponto
+  pts[0] = cpt(pts[0][0], pts[0][1], last.c);
+  return pts;
 }
 
 interface Body { W: number; D: number; H: number; G: number; x: number[] }
@@ -103,7 +122,7 @@ function handle(id: string, x0: number, w: number, y: number, T: number, parent:
   return {
     id, name: id === 'alca-f' ? 'Alça frente' : 'Alça traseira', parent, angle, hinge: [[x0, y], [x0 + w, y]],
     poly: [[x0, y], [x0 + w, y], ...arc([x0 + w - r, y - T + r], r, 0, -Math.PI / 2), ...arc([x0 + r, y - T + r], r, -Math.PI / 2, -Math.PI)],
-    holes: [[x0 + w * 0.36, y - T / 2], [x0 + w * 0.64, y - T / 2]].map(([cx, cy]) => arc([cx, cy], hr, 0, 2 * Math.PI, 16).slice(0, 16)),
+    holes: [[x0 + w * 0.36, y - T / 2], [x0 + w * 0.64, y - T / 2]].map(([cx, cy]) => circle(cx, cy, hr)),
     label: [x0 + w / 2, y - T * 0.2],
   };
 }
@@ -268,12 +287,7 @@ export function coracaoBox(p: BoxParams): TFace[] {
   let tc = Math.PI / 2;
   for (let lo = Math.PI / 2, hi = Math.PI, i = 0; i < 40; i++) { tc = (lo + hi) / 2; if (heartPt(tc)[1] < yc) lo = tc; else hi = tc; }
   const heartFlap = (cx: number, id: string, parent: string): TFace => {
-    const n = 40;
-    const pts: Vec2[] = [];
-    for (let i = 0; i <= n; i++) {
-      const [hx, hy] = heartPt(-tc + (2 * tc * i) / n);
-      pts.push([cx + k * hx, -L + k * (hy - yc)]);
-    }
+    const pts = heartCurve(-tc, tc, 12, ([hx, hy]) => [cx + k * hx, -L + k * (hy - yc)], k);
     const neck = k * heartPt(tc)[0];
     const inner = heart(cx, -L + k * (-1.5 - yc), hw * 0.42);
     return {
@@ -282,11 +296,14 @@ export function coracaoBox(p: BoxParams): TFace[] {
     };
   };
   const Ht = W - 2; // triângulo deita sobre a tampa, quase até o outro lado
+  // ponta redonda, tangente às duas bordas
+  const rt = Math.min(D * 0.12, Ht * 0.15);
   const tri = (x0: number): Vec2[] => {
-    const tip = Math.min(3, D * 0.06);
-    return [[x0, 0], [x0 + D, 0], [x0 + D / 2 + tip, -Ht + tip * 0.5], [x0 + D / 2, -Ht], [x0 + D / 2 - tip, -Ht + tip * 0.5]];
+    const th = Math.atan2(Ht, D / 2);
+    const P = Math.PI;
+    return [[x0, 0], [x0 + D, 0], ...arcPts([x0 + D / 2, -Ht + rt], rt, -P / 2 + (P / 2 - th), -P / 2 - (P / 2 - th))];
   };
-  const slit = (x0: number): Vec2[] => roundRect(x0 + D / 2 - 0.7, -Ht * 0.85, 1.4, Ht * 0.7, 0.7);
+  const slit = (x0: number): Vec2[] => roundRect(x0 + D / 2 - 0.7, -(Ht - 2 * rt) * 0.95, 1.4, (Ht - 2 * rt) * 0.8, 0.7);
   faces.push(
     ...lockBottom(b),
     { id: 'tampa-f', name: 'Tampa frente', poly: lid(x[1]), parent: 'frente', hinge: [[x[1], 0], [x[2], 0]], angle: 90, label: [x[1] + W * 0.1, -L / 2] },
@@ -305,7 +322,7 @@ export function coracaoBox(p: BoxParams): TFace[] {
   }
   return withOrder(faces, {
     'aba-cola': 1, 'lat-esq': 2, 'lat-dir': 2, traseira: 2, 'fundo-esq': 3, 'fundo-dir': 3, 'fundo-frente': 4, 'fundo-tras': 5,
-    'tampa-f': 6, 'tampa-t': 6, 'coracao-f': 7, 'coracao-t': 7, 'topo-esq': 8, 'topo-dir': 9,
+    'tampa-f': 6, 'tampa-t': 6, 'coracao-f': 6, 'coracao-t': 6, 'topo-esq': 7, 'topo-dir': 8,
   });
 }
 

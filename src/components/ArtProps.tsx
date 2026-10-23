@@ -1,6 +1,9 @@
 import { Box, Button, Flex, Image, Text } from '@chakra-ui/react';
-import { ImagePlus, X } from 'lucide-react';
-import { sideArt, useStore } from '../store';
+import {
+  AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical, AlignStartHorizontal, AlignStartVertical,
+  ImagePlus, Trash2, X,
+} from 'lucide-react';
+import { selectedObjects, sideArt, useStore } from '../store';
 import { useDieline } from '../useDieline';
 import { ColorField } from './ColorField';
 import { ObjectProps } from './ObjectProps';
@@ -13,6 +16,8 @@ export function ArtProps() {
   const face = dieline.faces.find((f) => f.id === s.sel.face);
   const obj = s.doc.objects.find((o) => o.id === s.sel.object);
   const art = sideArt(s);
+  const many = selectedObjects(s.sel);
+  if (many.length > 1) return <><SideSwitch /><MultiProps ids={many} /></>;
   if (obj) return <><SideSwitch /><ObjectProps o={obj} /></>;
 
   if (face)
@@ -88,5 +93,33 @@ export function ImageSlot({ url, onPick, onClear }: { label?: string; url?: stri
         <Button size="2xs" variant="ghost" onClick={onClear} title="Remover imagem" aria-label="Remover imagem"><X size={12} /></Button>
       )}
     </Flex>
+  );
+}
+
+/** Vários objetos selecionados (Shift): alinhar entre si e excluir. */
+function MultiProps({ ids }: { ids: string[] }) {
+  const s = useStore();
+  const list = s.doc.objects.filter((o) => ids.includes(o.id));
+  const x0 = Math.min(...list.map((o) => o.x)), x1 = Math.max(...list.map((o) => o.x + o.w));
+  const y0 = Math.min(...list.map((o) => o.y)), y1 = Math.max(...list.map((o) => o.y + o.h));
+  const align = (fn: (o: (typeof list)[number]) => { x?: number; y?: number }) =>
+    s.commit({ objects: s.doc.objects.map((o) => (ids.includes(o.id) ? { ...o, ...fn(o) } : o)) });
+  const items = [
+    { key: 'l', icon: <AlignStartVertical size={13} />, title: 'Alinhar à esquerda', onClick: () => align(() => ({ x: x0 })) },
+    { key: 'c', icon: <AlignCenterVertical size={13} />, title: 'Centralizar na horizontal', onClick: () => align((o) => ({ x: (x0 + x1) / 2 - o.w / 2 })) },
+    { key: 'r', icon: <AlignEndVertical size={13} />, title: 'Alinhar à direita', onClick: () => align((o) => ({ x: x1 - o.w })) },
+    { key: 't', icon: <AlignStartHorizontal size={13} />, title: 'Alinhar em cima', onClick: () => align(() => ({ y: y0 })) },
+    { key: 'm', icon: <AlignCenterHorizontal size={13} />, title: 'Centralizar na vertical', onClick: () => align((o) => ({ y: (y0 + y1) / 2 - o.h / 2 })) },
+    { key: 'b', icon: <AlignEndHorizontal size={13} />, title: 'Alinhar embaixo', onClick: () => align((o) => ({ y: y1 - o.h })) },
+  ];
+  return (
+    <Section
+      title={`${ids.length} objetos`}
+      action={<Button size="2xs" variant="ghost" onClick={() => s.deleteObjects(ids)} title="Excluir (Del)" aria-label="Excluir"><Trash2 size={12} /></Button>}
+    >
+      <IconToggles items={items.slice(0, 3)} />
+      <Box mt={1.5}><IconToggles items={items.slice(3)} /></Box>
+      <Text fontSize="10px" color="gray.500" mt={2}>Shift + clique soma ou tira objetos · arraste para mover todos · setas movem · Del exclui</Text>
+    </Section>
   );
 }

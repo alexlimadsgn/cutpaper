@@ -53,7 +53,13 @@ export interface Selection {
   edges: string[];
   face?: string;
   object?: string;
+  /** Seleção múltipla de objetos (Shift): inclui `object`, que é o principal. */
+  objects?: string[];
 }
+
+/** Objetos selecionados (o principal primeiro). */
+export const selectedObjects = (sel: Selection): string[] =>
+  sel.objects?.length ? sel.objects : sel.object ? [sel.object] : [];
 
 const EMPTY_SEL: Selection = { vertices: [], edges: [] };
 const HISTORY_LIMIT = 100;
@@ -142,6 +148,13 @@ interface State {
   cropEdit?: string;
   setCropEdit: (id?: string) => void;
   setGrid: (v: number) => void;
+  /** Snap (ímã) ligado: pontos, linhas, centros e grade. Atalho: S. */
+  snap: boolean;
+  toggleSnap: () => void;
+  /** Altera vários objetos ao vivo (arrasto de seleção múltipla). */
+  setObjectsLive: (patches: Record<string, Partial<ArtObject>>) => void;
+  /** Exclui vários objetos (um passo no histórico). */
+  deleteObjects: (ids: string[]) => void;
   setShowDims: (v: boolean) => void;
   /** Projeto novo a partir de um modelo da galeria. */
   reset: (presetId?: string) => void;
@@ -181,6 +194,7 @@ export const useStore = create<State>((set, get) => ({
   sel: EMPTY_SEL,
   dragging: false,
   grid: 1,
+  snap: true,
   showDims: true,
   fitToken: 0,
   artSide: 'out',
@@ -321,6 +335,13 @@ export const useStore = create<State>((set, get) => ({
   select: (sel) => set((s) => ({ sel: { ...EMPTY_SEL, ...sel }, cropEdit: sel.object && sel.object === s.cropEdit ? s.cropEdit : undefined })),
   setCropEdit: (cropEdit) => set({ cropEdit }),
   setGrid: (grid) => set({ grid }),
+  toggleSnap: () => set((s) => ({ snap: !s.snap })),
+  setObjectsLive: (patches) =>
+    set((s) => ({ doc: { ...s.doc, objects: s.doc.objects.map((o) => (patches[o.id] ? applyPatch(o, patches[o.id]) : o)) } })),
+  deleteObjects: (ids) => {
+    get().commit({ objects: get().doc.objects.filter((o) => !ids.includes(o.id)) });
+    set({ sel: EMPTY_SEL });
+  },
   setShowDims: (showDims) => set({ showDims }),
   reset: (presetId) => {
     const preset = PRESETS.find((p) => p.id === presetId) ?? PRESETS[0];

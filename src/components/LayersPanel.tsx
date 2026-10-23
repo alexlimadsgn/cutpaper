@@ -6,7 +6,7 @@ import {
 import { useEffect, useState } from 'react';
 import type { ArtObject } from '../art/objects';
 import type { Face } from '../geometry/types';
-import { sideArt, useStore } from '../store';
+import { selectedObjects, sideArt, useStore } from '../store';
 import { useDieline } from '../useDieline';
 
 const OBJ_ICON = { rect: Square, ellipse: Circle, text: Type, image: ImageIcon };
@@ -105,14 +105,20 @@ export function LayersPanel() {
     </Box>
   );
 
-  const selectObject = (o: ArtObject) => {
+  const selectObject = (o: ArtObject, shift = false) => {
     if (s.mode !== 'art') s.setMode('art');
+    if (shift) {
+      // Shift: soma/tira da seleção
+      const cur = selectedObjects(s.sel);
+      const next = cur.includes(o.id) ? cur.filter((x) => x !== o.id) : [...cur, o.id];
+      return s.select(next.length ? { object: next.includes(o.id) ? o.id : next[0], objects: next } : {});
+    }
     s.select({ object: o.id, face: o.clip });
   };
 
   const objectRow = (o: ArtObject, depth: number) => {
     const Icon = OBJ_ICON[o.type];
-    const selected = s.sel.object === o.id;
+    const selected = selectedObjects(s.sel).includes(o.id);
     return (
       <Flex
         key={o.id}
@@ -125,7 +131,7 @@ export function LayersPanel() {
         cursor="pointer"
         bg={selected ? 'orange.100' : undefined}
         _hover={{ bg: selected ? 'orange.100' : 'gray.50' }}
-        onClick={() => selectObject(o)}
+        onClick={(e) => selectObject(o, e.shiftKey)}
         opacity={o.hidden ? 0.5 : 1}
       >
         <Icon size={12} color="var(--chakra-colors-gray-500)" />
