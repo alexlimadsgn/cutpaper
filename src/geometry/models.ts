@@ -268,8 +268,9 @@ export function gableBox(p: BoxParams): TFace[] {
 }
 
 /**
- * Caixa coração: tampas da frente e da traseira (metade da profundidade cada) com corações em pé
- * que se encostam no meio; os triângulos das laterais deitam por cima e os corações passam pela fenda.
+ * Caixa coração: tampas da frente e da traseira (metade da profundidade cada); os triângulos das
+ * laterais deitam por cima e, por último, os corações sobem pela fenda e se encostam no meio
+ * (girando, o coração só cruza o triângulo na linha da dobra, que fica na fenda).
  */
 export function coracaoBox(p: BoxParams): TFace[] {
   const { faces, b } = body(p, 'right');
@@ -333,7 +334,7 @@ export function coracaoBox(p: BoxParams): TFace[] {
   }
   return withOrder(faces, {
     'aba-cola': 1, 'lat-esq': 2, 'lat-dir': 2, traseira: 2, 'fundo-esq': 3, 'fundo-dir': 3, 'fundo-frente': 4, 'fundo-tras': 5,
-    'tampa-f': 6, 'tampa-t': 6, 'coracao-f': 6, 'coracao-t': 6, 'topo-esq': 7, 'topo-dir': 8,
+    'tampa-f': 6, 'tampa-t': 6, 'topo-esq': 7, 'topo-dir': 8, 'coracao-f': 9, 'coracao-t': 9,
   });
 }
 
